@@ -64,6 +64,9 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://bytebot-ollama:11434}
+      - LOCAL_OPENAI_BASE=${LOCAL_OPENAI_BASE}
+      - LOCAL_OPENAI_API_KEY=${LOCAL_OPENAI_API_KEY}
     networks:
       - bytebot-network
 
@@ -89,9 +92,22 @@ services:
     networks:
       - bytebot-network
 
+  # Optional local LLM (Ollama)
+  bytebot-ollama:
+    image: ollama/ollama:latest
+    container_name: bytebot-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    networks:
+      - bytebot-network
+
 networks:
   bytebot-network:
     driver: bridge
 
 volumes:
   postgres_data:
+  ollama:

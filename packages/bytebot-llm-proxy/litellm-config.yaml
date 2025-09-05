@@ -28,3 +28,17 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
+
+  # Local: Ollama (configure OLLAMA_BASE_URL, e.g. http://bytebot-ollama:11434)
+  - model_name: ollama-llama3.1-8b
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: os.environ/OLLAMA_BASE_URL
+
+  # Local: Generic OpenAI-compatible endpoint (e.g., FastAPI following OpenAI spec)
+  # Set LOCAL_OPENAI_BASE to http://your-fastapi:8000/v1 and, if needed, LOCAL_OPENAI_API_KEY
+  - model_name: local-openai-compat
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_base: os.environ/LOCAL_OPENAI_BASE
+      api_key: os.environ/LOCAL_OPENAI_API_KEY

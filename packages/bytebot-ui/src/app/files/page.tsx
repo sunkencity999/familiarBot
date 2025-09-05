@@ -22,6 +22,7 @@ function getErrorMessage(err: unknown): string {
 
 export default function FilesPage() {
   const [cwd, setCwd] = useState<string>("");
+  const [basePath, setBasePath] = useState<string>("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [clipboard, setClipboardState] = useState<string>("");
@@ -35,6 +36,7 @@ export default function FilesPage() {
     try {
       const res = await listDir(path ?? cwd);
       setCwd(res.path);
+      if (!basePath) setBasePath(res.path); // capture base on first load
       setEntries(
         res.entries.sort((a, b) =>
           a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1,
@@ -46,13 +48,23 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [cwd]);
+  }, [cwd, basePath]);
 
   useEffect(() => { refresh(""); }, [refresh]);
 
+  const join = (a: string, b: string) => `${a.replace(/\/$/, '')}/${b.replace(/^\//, '')}`;
+
   const goUp = async () => {
-    const parent = cwd.replace(/\/$/, "");
-    const up = parent.substring(0, parent.lastIndexOf("/"));
+    if (!cwd) return refresh("");
+    const current = cwd.replace(/\/$/, '');
+    if (basePath && (current === basePath || current.startsWith(basePath) && current.length <= basePath.length)) {
+      return refresh(basePath);
+    }
+    const idx = current.lastIndexOf('/');
+    if (idx <= 0) return refresh(basePath || '');
+    const up = current.slice(0, idx);
+    // prevent navigating above basePath
+    if (basePath && !up.startsWith(basePath)) return refresh(basePath);
     await refresh(up);
   };
 
@@ -176,7 +188,7 @@ export default function FilesPage() {
                       <tr key={e.name} className="border-t">
                         <td className="py-1">
                           {e.type==='dir' ? (
-                            <button className="text-blue-600 hover:underline" onClick={()=>refresh(`${cwd}/${e.name}`)}>{e.name}/</button>
+                            <button className="text-blue-600 hover:underline" onClick={()=>refresh(join(cwd || basePath, e.name))}>{e.name}/</button>
                           ) : (
                             <span>{e.name}</span>
                           )}
