@@ -97,10 +97,113 @@ export class ComputerUseService {
         return this.readFile(params);
       }
 
+      case 'list_dir': {
+        return this.listDir(params.path);
+      }
+
+      case 'make_dir': {
+        return this.makeDir(params.path);
+      }
+
+      case 'delete_path': {
+        return this.deletePath(params.path);
+      }
+
+      case 'move_path': {
+        return this.movePath(params.from, params.to);
+      }
+
+      case 'get_clipboard': {
+        const text = await this.nutService.getClipboardText();
+        return { success: true, text };
+      }
+
+      case 'set_clipboard': {
+        await this.nutService.setClipboardText(params.text);
+        return { success: true };
+      }
+
       default:
         throw new Error(
           `Unsupported computer action: ${(params as any).action}`,
         );
+    }
+  }
+
+  private resolvePath(targetPath?: string): string {
+    const base = '/home/user';
+    if (!targetPath || targetPath.trim() === '' || targetPath === '~') return base;
+    const p = path.isAbsolute(targetPath) ? targetPath : path.join(base, targetPath);
+    const normalized = path.normalize(p);
+    if (!normalized.startsWith(base)) {
+      throw new Error('Path traversal is not allowed');
+    }
+    return normalized;
+  }
+
+  private async listDir(dirPath?: string): Promise<{
+    success: boolean;
+    path: string;
+    entries: { name: string; type: 'file' | 'dir'; size: number; mtime: number }[];
+  }> {
+    const target = this.resolvePath(dirPath);
+    try {
+      const dir = await import('fs').then((fs) => fs.promises.readdir(target));
+      const entries: { name: string; type: 'file' | 'dir'; size: number; mtime: number }[] = [];
+      for (const name of dir) {
+        const full = path.join(target, name);
+        const stat = await import('fs').then((fs) => fs.promises.stat(full));
+        entries.push({
+          name,
+          type: stat.isDirectory() ? 'dir' : 'file',
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        });
+      }
+      return { success: true, path: target, entries };
+    } catch (error) {
+      this.logger.error(`Error listing dir: ${error.message}`, error.stack);
+      return { success: false, path: target, entries: [] };
+    }
+  }
+
+  private async makeDir(dirPath: string): Promise<{ success: boolean }> {
+    const target = this.resolvePath(dirPath);
+    try {
+      await import('fs').then((fs) => fs.promises.mkdir(target, { recursive: true }));
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Error making dir: ${error.message}`, error.stack);
+      return { success: false };
+    }
+  }
+
+  private async deletePath(targetPath: string): Promise<{ success: boolean }> {
+    const target = this.resolvePath(targetPath);
+    try {
+      const stat = await import('fs').then((fs) => fs.promises.stat(target));
+      if (stat.isDirectory()) {
+        await import('fs').then((fs) => fs.promises.rm(target, { recursive: true, force: true }));
+      } else {
+        await import('fs').then((fs) => fs.promises.unlink(target));
+      }
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Error deleting path: ${error.message}`, error.stack);
+      return { success: false };
+    }
+  }
+
+  private async movePath(fromPath: string, toPath: string): Promise<{ success: boolean }> {
+    const from = this.resolvePath(fromPath);
+    const to = this.resolvePath(toPath);
+    try {
+      await import('fs').then((fs) => fs.promises.mkdir(path.dirname(to), { recursive: true }));
+      await import('fs').then((fs) => fs.promises.rename(from, to));
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Error moving path: ${error.message}`, error.stack);
+      return { success: false };
     }
   }
 
@@ -370,11 +473,8 @@ export class ComputerUseService {
       // Decode base64 data
       const buffer = Buffer.from(action.data, 'base64');
 
-      // Resolve path - if relative, make it relative to user's home directory
-      let targetPath = action.path;
-      if (!path.isAbsolute(targetPath)) {
-        targetPath = path.join('/home/user/Desktop', targetPath);
-      }
+      // Resolve path safely
+      const targetPath = this.resolvePath(action.path);
 
       // Ensure directory exists using sudo
       const dir = path.dirname(targetPath);
@@ -427,11 +527,7 @@ export class ComputerUseService {
     try {
       const execAsync = promisify(exec);
 
-      // Resolve path - if relative, make it relative to user's home directory
-      let targetPath = action.path;
-      if (!path.isAbsolute(targetPath)) {
-        targetPath = path.join('/home/user/Desktop', targetPath);
-      }
+      const targetPath = this.resolvePath(action.path);
 
       // Copy file to temp location using sudo to read it
       const tempFile = `/tmp/bytebot_read_${Date.now()}_${Math.random().toString(36).substring(7)}`;

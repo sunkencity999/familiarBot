@@ -250,7 +250,7 @@ export class NutService {
       // Copy text to clipboard using xclip via spawn
       await new Promise<void>((resolve, reject) => {
         const child = spawn('xclip', ['-selection', 'clipboard'], {
-          env: { ...process.env, DISPLAY: ':0.0' },
+          env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' },
           stdio: ['pipe', 'ignore', 'inherit'],
         });
 
@@ -272,6 +272,50 @@ export class NutService {
       await keyboard.releaseKey(Key.LeftControl, Key.V);
     } catch (error) {
       throw new Error(`Failed to paste text: ${error.message}`);
+    }
+  }
+
+  async setClipboardText(text: string): Promise<void> {
+    this.logger.log(`Setting clipboard text (${text.length} chars)`);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('xclip', ['-selection', 'clipboard'], {
+          env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' },
+          stdio: ['pipe', 'ignore', 'inherit'],
+        });
+        child.once('error', reject);
+        child.once('close', (code) => {
+          code === 0
+            ? resolve()
+            : reject(new Error(`xclip exited with code ${code}`));
+        });
+        child.stdin.write(text);
+        child.stdin.end();
+      });
+    } catch (error) {
+      throw new Error(`Failed to set clipboard text: ${error.message}`);
+    }
+  }
+
+  async getClipboardText(): Promise<string> {
+    this.logger.log(`Reading clipboard text`);
+    try {
+      return await new Promise<string>((resolve, reject) => {
+      const child = spawn('xclip', ['-selection', 'clipboard', '-o'], {
+        env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' },
+        stdio: ['ignore', 'pipe', 'inherit'],
+      });
+        let out = '';
+        child.stdout.on('data', (chunk) => (out += chunk.toString()));
+        child.once('error', reject);
+        child.once('close', (code) => {
+          if (code === 0) resolve(out);
+          else resolve(''); // Empty clipboard or no owner: treat as empty
+        });
+      });
+    } catch (err) {
+      this.logger.warn(`Clipboard read failed, returning empty: ${(<Error>err).message}`);
+      return '';
     }
   }
 

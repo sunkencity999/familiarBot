@@ -13,6 +13,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SummariesModule } from './summaries/summaries.modue';
 import { ProxyModule } from './proxy/proxy.module';
+import { FilesController } from './files/files.controller';
+import { ClipboardController } from './files/clipboard.controller';
 
 @Module({
   imports: [
@@ -31,7 +33,7 @@ import { ProxyModule } from './proxy/proxy.module';
     ProxyModule,
     PrismaModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, FilesController, ClipboardController],
   providers: [AppService],
 })
 export class AppModule {}

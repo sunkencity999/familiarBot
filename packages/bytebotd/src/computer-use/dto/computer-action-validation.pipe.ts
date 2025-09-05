@@ -23,6 +23,12 @@ import {
   ApplicationActionDto,
   WriteFileActionDto,
   ReadFileActionDto,
+  ListDirActionDto,
+  MakeDirActionDto,
+  DeletePathActionDto,
+  MovePathActionDto,
+  GetClipboardActionDto,
+  SetClipboardActionDto,
 } from './computer-action.dto';
 
 @Injectable()
@@ -81,6 +87,24 @@ export class ComputerActionValidationPipe implements PipeTransform {
         break;
       case 'read_file':
         dto = plainToClass(ReadFileActionDto, value);
+        break;
+      case 'list_dir':
+        dto = plainToClass(ListDirActionDto, value);
+        break;
+      case 'make_dir':
+        dto = plainToClass(MakeDirActionDto, value);
+        break;
+      case 'delete_path':
+        dto = plainToClass(DeletePathActionDto, value);
+        break;
+      case 'move_path':
+        dto = plainToClass(MovePathActionDto, value);
+        break;
+      case 'get_clipboard':
+        dto = plainToClass(GetClipboardActionDto, value);
+        break;
+      case 'set_clipboard':
+        dto = plainToClass(SetClipboardActionDto, value);
         break;
       default:
         throw new BadRequestException(`Unknown action: ${value.action}`);
