@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/bytebot-logo.png" width="500" alt="Bytebot Logo">
+<img src="static/jobybotlogo.png" width="500" alt="Jobybot Logo">
 
 # Jobybot: AI Desktop Agent
 
