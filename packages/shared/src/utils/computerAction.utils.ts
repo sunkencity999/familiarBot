@@ -16,6 +16,12 @@ import {
   PasteTextAction,
   WriteFileAction,
   ReadFileAction,
+  ListDirAction,
+  MakeDirAction,
+  DeletePathAction,
+  MovePathAction,
+  GetClipboardAction,
+  SetClipboardAction,
 } from "../types/computerAction.types";
 import {
   ComputerToolUseContentBlock,
@@ -64,6 +70,22 @@ export const isCursorPositionAction =
   createActionTypeGuard<CursorPositionAction>("cursor_position");
 export const isApplicationAction =
   createActionTypeGuard<ApplicationAction>("application");
+export const isListDirAction = createActionTypeGuard<ListDirAction>(
+  "list_dir",
+);
+export const isMakeDirAction = createActionTypeGuard<MakeDirAction>(
+  "make_dir",
+);
+export const isDeletePathAction = createActionTypeGuard<DeletePathAction>(
+  "delete_path",
+);
+export const isMovePathAction = createActionTypeGuard<MovePathAction>(
+  "move_path",
+);
+export const isGetClipboardAction =
+  createActionTypeGuard<GetClipboardAction>("get_clipboard");
+export const isSetClipboardAction =
+  createActionTypeGuard<SetClipboardAction>("set_clipboard");
 
 /**
  * Base converter for creating tool use blocks
@@ -293,6 +315,55 @@ export function convertReadFileActionToToolUseBlock(
   });
 }
 
+export function convertListDirActionToToolUseBlock(
+  action: ListDirAction,
+  toolUseId: string,
+): ComputerToolUseContentBlock {
+  const input: Record<string, any> = {};
+  if (action.path) input.path = action.path;
+  return createToolUseBlock("computer_list_dir", toolUseId, input);
+}
+
+export function convertMakeDirActionToToolUseBlock(
+  action: MakeDirAction,
+  toolUseId: string,
+): ComputerToolUseContentBlock {
+  return createToolUseBlock("computer_make_dir", toolUseId, { path: action.path });
+}
+
+export function convertDeletePathActionToToolUseBlock(
+  action: DeletePathAction,
+  toolUseId: string,
+): ComputerToolUseContentBlock {
+  return createToolUseBlock("computer_delete_path", toolUseId, { path: action.path });
+}
+
+export function convertMovePathActionToToolUseBlock(
+  action: MovePathAction,
+  toolUseId: string,
+): ComputerToolUseContentBlock {
+  return createToolUseBlock("computer_move_path", toolUseId, {
+    from: action.from,
+    to: action.to,
+  });
+}
+
+export function convertGetClipboardActionToToolUseBlock(
+  action: GetClipboardAction,
+  toolUseId: string,
+): ComputerToolUseContentBlock {
+  return createToolUseBlock("computer_get_clipboard", toolUseId, {});
+}
+
+export function convertSetClipboardActionToToolUseBlock(
+  action: SetClipboardAction,
+  toolUseId: string,
+): ComputerToolUseContentBlock {
+  return createToolUseBlock("computer_set_clipboard", toolUseId, {
+    text: action.text,
+  });
+}
+
 /**
  * Generic converter that handles all action types
  */
@@ -333,6 +404,18 @@ export function convertComputerActionToToolUseBlock(
       return convertWriteFileActionToToolUseBlock(action, toolUseId);
     case "read_file":
       return convertReadFileActionToToolUseBlock(action, toolUseId);
+    case "list_dir":
+      return convertListDirActionToToolUseBlock(action, toolUseId);
+    case "make_dir":
+      return convertMakeDirActionToToolUseBlock(action, toolUseId);
+    case "delete_path":
+      return convertDeletePathActionToToolUseBlock(action, toolUseId);
+    case "move_path":
+      return convertMovePathActionToToolUseBlock(action, toolUseId);
+    case "get_clipboard":
+      return convertGetClipboardActionToToolUseBlock(action, toolUseId);
+    case "set_clipboard":
+      return convertSetClipboardActionToToolUseBlock(action, toolUseId);
     default:
       const exhaustiveCheck: never = action;
       throw new Error(

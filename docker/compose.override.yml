@@ -1,0 +1,6 @@
+version: "3.9"
+services:
+  bytebot-desktop:
+    # Use the prebuilt desktop image for speed, but override the app code
+    volumes:
+      - ../packages/bytebotd/dist:/bytebot/bytebotd/dist:ro

@@ -105,6 +105,36 @@ export type ReadFileAction = {
   path: string;
 };
 
+export type ListDirAction = {
+  action: "list_dir";
+  path?: string;
+};
+
+export type MakeDirAction = {
+  action: "make_dir";
+  path: string;
+};
+
+export type DeletePathAction = {
+  action: "delete_path";
+  path: string;
+};
+
+export type MovePathAction = {
+  action: "move_path";
+  from: string;
+  to: string;
+};
+
+export type GetClipboardAction = {
+  action: "get_clipboard";
+};
+
+export type SetClipboardAction = {
+  action: "set_clipboard";
+  text: string;
+};
+
 // Define the union type using the individual action types
 export type ComputerAction =
   | MoveMouseAction
@@ -122,4 +152,10 @@ export type ComputerAction =
   | CursorPositionAction
   | ApplicationAction
   | WriteFileAction
-  | ReadFileAction;
+  | ReadFileAction
+  | ListDirAction
+  | MakeDirAction
+  | DeletePathAction
+  | MovePathAction
+  | GetClipboardAction
+  | SetClipboardAction;

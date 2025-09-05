@@ -219,6 +219,55 @@ export class ReadFileActionDto extends BaseActionDto {
   path: string;
 }
 
+export class ListDirActionDto extends BaseActionDto {
+  @IsIn(['list_dir'])
+  action: 'list_dir';
+
+  @IsOptional()
+  @IsString()
+  path?: string;
+}
+
+export class MakeDirActionDto extends BaseActionDto {
+  @IsIn(['make_dir'])
+  action: 'make_dir';
+
+  @IsString()
+  path: string;
+}
+
+export class DeletePathActionDto extends BaseActionDto {
+  @IsIn(['delete_path'])
+  action: 'delete_path';
+
+  @IsString()
+  path: string;
+}
+
+export class MovePathActionDto extends BaseActionDto {
+  @IsIn(['move_path'])
+  action: 'move_path';
+
+  @IsString()
+  from: string;
+
+  @IsString()
+  to: string;
+}
+
+export class GetClipboardActionDto extends BaseActionDto {
+  @IsIn(['get_clipboard'])
+  action: 'get_clipboard';
+}
+
+export class SetClipboardActionDto extends BaseActionDto {
+  @IsIn(['set_clipboard'])
+  action: 'set_clipboard';
+
+  @IsString()
+  text: string;
+}
+
 // Union type for all computer actions
 export type ComputerActionDto =
   | MoveMouseActionDto
@@ -236,4 +285,10 @@ export type ComputerActionDto =
   | CursorPositionActionDto
   | ApplicationActionDto
   | WriteFileActionDto
-  | ReadFileActionDto;
+  | ReadFileActionDto
+  | ListDirActionDto
+  | MakeDirActionDto
+  | DeletePathActionDto
+  | MovePathActionDto
+  | GetClipboardActionDto
+  | SetClipboardActionDto;
