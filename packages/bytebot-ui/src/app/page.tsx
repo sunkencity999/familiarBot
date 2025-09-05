@@ -195,7 +195,7 @@ export default function Home() {
           {/* Stock photo area - centered in its grid cell */}
           <div className="flex items-center justify-center px-6 pt-6">
             <div className="aspect-square h-full w-full max-w-md xl:max-w-2xl">
-              <StockPhoto src="/stock-1.png" alt="Bytebot stock image" />
+              <StockPhoto src="/bradfordcityonFire.jpg" alt="Bradford city on fire" />
             </div>
           </div>
         </div>

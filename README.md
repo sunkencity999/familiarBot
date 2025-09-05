@@ -2,35 +2,22 @@
 
 <img src="docs/images/bytebot-logo.png" width="500" alt="Bytebot Logo">
 
-# Bytebot: Open-Source AI Desktop Agent
+# Jobybot: AI Desktop Agent
 
 **An AI that has its own computer to complete tasks for you**
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
-
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://github.com/bytebot-ai/bytebot/tree/main/docker)
-[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Discord](https://img.shields.io/discord/1232768900274585720?color=7289da&label=discord)](https://discord.com/invite/d9ewZkWPTP)
+
 
 [🌐 Website](https://bytebot.ai) • [📚 Documentation](https://docs.bytebot.ai) • [💬 Discord](https://discord.com/invite/d9ewZkWPTP) • [𝕏 Twitter](https://x.com/bytebot_ai)
 
 </div>
-
----
-
-https://github.com/user-attachments/assets/f271282a-27a3-43f3-9b99-b34007fdd169
-
-
-
-https://github.com/user-attachments/assets/72a43cf2-bd87-44c5-a582-e7cbe176f37f
-
-
-
+This is a an AI agent that was built from an open-source desktop agent named bytebot. We have extended it's capabilites to be improve it's usefulness as a working tool, and to enable the use of proprietary AI models, and on-premises AI models for greater security and privacy.
 
 
 ## What is a Desktop Agent?
 
-A desktop agent is an AI that has its own computer. Unlike browser-only agents or traditional RPA tools, Bytebot comes with a full virtual desktop where it can:
+A desktop agent is an AI that has its own computer. Unlike browser-only agents or traditional RPA tools, Jobybot comes with a full virtual desktop where it can:
 
 - Use any application (browsers, email clients, office tools, IDEs)
 - Download and organize files with its own file system
@@ -46,7 +33,7 @@ When AI has access to a complete desktop environment, it unlocks capabilities th
 
 ### Complete Task Autonomy
 
-Give Bytebot a task like "Download all invoices from our vendor portals and organize them into a folder" and it will:
+Give Jobybot a task like "Download all invoices from our vendor portals and organize them into a folder" and it will:
 
 - Open the browser
 - Navigate to each portal
@@ -56,7 +43,7 @@ Give Bytebot a task like "Download all invoices from our vendor portals and orga
 
 ### Process Documents
 
-Upload files directly to Bytebot's desktop and it can:
+Upload files directly to Jobybot's desktop and it can:
 
 - Read entire PDFs into its context
 - Extract data from complex documents
@@ -66,7 +53,7 @@ Upload files directly to Bytebot's desktop and it can:
 
 ### Use Real Applications
 
-Bytebot isn't limited to web interfaces. It can:
+Jobybot isn't limited to web interfaces. It can:
 
 - Use desktop applications like text editors, VS Code, or email clients
 - Run scripts and command-line tools
@@ -77,16 +64,11 @@ Bytebot isn't limited to web interfaces. It can:
 
 ### Deploy in 2 Minutes
 
-**Option 1: Railway (Easiest)**
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
-
-Just click and add your AI provider API key.
-
-**Option 2: Docker Compose**
+**Option 1: Docker Compose**
 
 ```bash
-git clone https://github.com/bytebot-ai/bytebot.git
-cd bytebot
+git clone https://github.com/sunkencity999/familiarBot.git
+cd familiarBot
 
 # Add your AI provider key (choose one)
 echo "ANTHROPIC_API_KEY=sk-ant-..." > docker/.env
@@ -100,9 +82,27 @@ docker-compose -f docker/docker-compose.yml up -d
 
 [Full deployment guide →](https://docs.bytebot.ai/quickstart)
 
+**Option 3: Local LLMs (LiteLLM + optional Ollama)**
+
+Run Jobybot with a local LLM proxy and (optionally) Ollama:
+
+```bash
+git clone https://github.com/sunkencity999/familiarBot.git
+cd familiarBot
+
+# Start desktop, DB, agent, UI, and the LLM proxy (with optional Ollama)
+docker compose -f docker/docker-compose.proxy.yml up -d
+
+# Open http://localhost:9992 and select a model from the "proxy" provider,
+# e.g., "ollama-llama3.1-8b" or "local-openai-compat".
+
+# If using Ollama for the first time, pre-pull a model (optional):
+docker exec -it bytebot-ollama ollama pull llama3.1:8b
+```
+
 ## How It Works
 
-Bytebot consists of four integrated components:
+Jobybot consists of four integrated components:
 
 1. **Virtual Desktop**: A complete Ubuntu Linux environment with pre-installed applications
 2. **AI Agent**: Understands your tasks and controls the desktop to complete them
@@ -117,6 +117,8 @@ Bytebot consists of four integrated components:
 - **Takeover Mode**: Take control when you need to help or configure something
 - **Password Manager Support**: Install 1Password, Bitwarden, etc. for automatic authentication
 - **Persistent Environment**: Install programs and they stay available for future tasks
+- **File Explorer**: Browse, upload, download, create folders, and delete files under `/home/user` from the new Files page
+- **Clipboard Sync**: Pull and push desktop clipboard text from the Files page
 
 ## Example Tasks
 
@@ -182,9 +184,9 @@ curl -X POST http://localhost:9990/computer-use \
 
 ## Setting Up Your Desktop Agent
 
-### 1. Deploy Bytebot
+### 1. Deploy Jobybot
 
-Use one of the deployment methods above to get Bytebot running.
+Use one of the deployment methods above to get Jobybot running.
 
 ### 2. Configure the Desktop
 
@@ -193,11 +195,11 @@ Use the Desktop tab in the UI to:
 - Install additional programs you need
 - Set up password managers for authentication
 - Configure applications with your preferences
-- Log into websites you want Bytebot to access
+- Log into websites you want Jobybot to access
 
 ### 3. Start Giving Tasks
 
-Create tasks in natural language and watch Bytebot complete them using the configured desktop.
+Create tasks in natural language and watch Jobybot complete them using the configured desktop.
 
 ## Use Cases
 
@@ -224,7 +226,7 @@ Create tasks in natural language and watch Bytebot complete them using the confi
 
 ## Architecture
 
-Bytebot is built with:
+Jobybot is built with:
 
 - **Desktop**: Ubuntu 22.04 with XFCE, Firefox, VS Code, and other tools
 - **Agent**: NestJS service that coordinates AI and desktop actions
@@ -250,21 +252,28 @@ Use any AI provider through our [LiteLLM integration](https://docs.bytebot.ai/de
 - Local models via Ollama
 - 100+ other providers
 
-### Enterprise Deployment
+### Local LLMs via LiteLLM
 
-Deploy on Kubernetes with Helm:
+Jobybot includes a proxy setup powered by LiteLLM that lets you use:
 
-```bash
-# Clone the repository
-git clone https://github.com/bytebot-ai/bytebot.git
-cd bytebot
+- Ollama models locally (e.g., `llama3.1:8b`), via the bundled `bytebot-ollama` service
+- Any OpenAI-compatible FastAPI endpoint by pointing `LOCAL_OPENAI_BASE` to your server
 
-# Install with Helm
-helm install bytebot ./helm \
-  --set agent.env.ANTHROPIC_API_KEY=sk-ant-...
-```
+Files to know:
 
-[Enterprise deployment guide →](https://docs.bytebot.ai/deployment/helm)
+- `docker/docker-compose.proxy.yml`: brings up `bytebot-llm-proxy` and (optionally) `bytebot-ollama`
+- `packages/bytebot-llm-proxy/litellm-config.yaml`: models exposed via the proxy
+
+Environment variables:
+
+- `BYTEBOT_LLM_PROXY_URL`: set for the agent to fetch models and route completions (defaults to `http://bytebot-llm-proxy:4000` in the proxy compose file)
+- `OLLAMA_BASE_URL`: base URL for Ollama (defaults to `http://bytebot-ollama:11434`)
+- `LOCAL_OPENAI_BASE`: base URL of an OpenAI-compatible endpoint (e.g., FastAPI `/v1`)
+- `LOCAL_OPENAI_API_KEY`: optional API key for your local endpoint
+
+Once running, open the UI and pick a model under the provider `proxy` (e.g., `ollama-llama3.1-8b` or `local-openai-compat`).
+
+
 
 ## Community & Support
 
@@ -283,14 +292,14 @@ We welcome contributions! Whether it's:
 
 Please:
 
-1. Check existing [issues](https://github.com/bytebot-ai/bytebot/issues) first
+1. Check existing [issues](https://github.com/sunkencity999/familiarBot/issues) first
 2. Open an issue to discuss major changes
 3. Submit PRs with clear descriptions
-4. Join our [Discord](https://discord.com/invite/d9ewZkWPTP) to discuss ideas
+
 
 ## License
 
-Bytebot is open source under the Apache 2.0 license.
+Jobybot is under the MIT license.
 
 ---
 
@@ -300,6 +309,6 @@ Bytebot is open source under the Apache 2.0 license.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
 
-<sub>Built by [Tantl Labs](https://tantl.com) and the open source community</sub>
+<sub>Built by [Tantl Labs](https://tantl.com), Christopher Bradford (internally) and the open source community</sub>
 
 </div>
