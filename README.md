@@ -75,6 +75,10 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." > docker/.env
 # Or: echo "OPENAI_API_KEY=sk-..." > docker/.env
 # Or: echo "GEMINI_API_KEY=..." > docker/.env
 
+# Build the custom UI image with folder navigation fix
+docker build -t familiarbot-ui-fixed:latest -f packages/bytebot-ui/Dockerfile packages/
+
+# Start all services
 docker-compose -f docker/docker-compose.yml up -d
 
 # Open http://localhost:9992
