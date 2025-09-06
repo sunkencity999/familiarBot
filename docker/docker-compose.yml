@@ -63,8 +63,8 @@ services:
       args:
         - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
         - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-ui:edge
+    # Use custom fixed image
+    image: familiarbot-ui-fixed:latest
     container_name: bytebot-ui
     restart: unless-stopped
     ports:

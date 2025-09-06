@@ -33,8 +33,11 @@ export default function FilesPage() {
   const refresh = useCallback(async (path?: string) => {
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
-      const res = await listDir(path ?? cwd);
+      console.log('Fetching directory:', path || 'root');
+      const res = await listDir(path);
+      console.log('API response:', res);
       setCwd(res.path);
       if (!basePath) setBasePath(res.path); // capture base on first load
       setEntries(
@@ -42,15 +45,19 @@ export default function FilesPage() {
           a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1,
         ),
       );
+      console.log('Entries set:', res.entries.length, 'items');
     } catch (e: unknown) {
       console.error('List error', e);
       setError(getErrorMessage(e) || 'Failed to load directory');
     } finally {
       setLoading(false);
     }
-  }, [cwd, basePath]);
+  }, [basePath]);
 
-  useEffect(() => { refresh(""); }, [refresh]);
+  useEffect(() => { 
+    console.log('Initial load effect triggered');
+    refresh(""); 
+  }, []);
 
   const join = (a: string, b: string) => `${a.replace(/\/$/, '')}/${b.replace(/^\//, '')}`;
 
