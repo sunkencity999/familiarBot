@@ -25,9 +25,10 @@ const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
+const vllmBaseUrl = process.env.VLLM_BASE_URL;
 
 const models = [
-  ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
+  ...(anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here' ? ANTHROPIC_MODELS : []),
   ...(openaiApiKey ? OPENAI_MODELS : []),
   ...(geminiApiKey ? GOOGLE_MODELS : []),
 ];
@@ -68,46 +69,105 @@ export class TasksController {
 
   @Get('models')
   async getModels() {
+    const allModels: BytebotAgentModel[] = [...models];
+
+    // Fetch models from proxy if available and filter by API keys
     if (proxyUrl) {
       try {
-        const response = await fetch(`${proxyUrl}/model/info`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new HttpException(
-            `Failed to fetch models from proxy: ${response.statusText}`,
-            HttpStatus.BAD_GATEWAY,
-          );
+        const response = await fetch(`${proxyUrl}/model/info`);
+        if (response.ok) {
+          const proxyResponse = await response.json();
+          const proxyModels: BytebotAgentModel[] = proxyResponse.data
+            .filter((model: any) => {
+              // Filter models based on available API keys
+              const modelKey = model.litellm_params.model;
+              if (modelKey.startsWith('anthropic/')) {
+                return !!process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here';
+              }
+              if (modelKey.startsWith('openai/')) {
+                return !!process.env.OPENAI_API_KEY;
+              }
+              if (modelKey.startsWith('gemini/')) {
+                return !!process.env.GEMINI_API_KEY;
+              }
+              if (modelKey.startsWith('ollama/')) {
+                return true; // Ollama doesn't require API key
+              }
+              // For local-openai-compat, check if LOCAL_OPENAI_BASE is set
+              if (model.model_name === 'local-openai-compat') {
+                return !!process.env.LOCAL_OPENAI_BASE;
+              }
+              return false;
+            })
+            .map((model: any) => ({
+              provider: 'proxy',
+              name: model.litellm_params.model,
+              title: model.model_name,
+              contextWindow: model.model_info.max_input_tokens || 128000,
+            }));
+          allModels.push(...proxyModels);
         }
-
-        const proxyModels = await response.json();
-
-        // Map proxy response to BytebotAgentModel format
-        const models: BytebotAgentModel[] = proxyModels.data.map(
-          (model: any) => ({
-            provider: 'proxy',
-            name: model.litellm_params.model,
-            title: model.model_name,
-            contextWindow: 128000,
-          }),
-        );
-
-        return models;
       } catch (error) {
-        if (error instanceof HttpException) {
-          throw error;
-        }
-        throw new HttpException(
-          `Error fetching models: ${error.message}`,
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
+        console.warn('Failed to fetch proxy models:', error.message);
       }
     }
-    return models;
+
+    // Fetch models from VLLM endpoint if available
+    if (vllmBaseUrl) {
+      try {
+        const vllmApiKey = process.env.VLLM_API_KEY;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (vllmApiKey) {
+          headers['Authorization'] = `Bearer ${vllmApiKey}`;
+        }
+
+        // Try standard /v1/models endpoint first
+        let response = await fetch(`${vllmBaseUrl}/models`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (response.ok) {
+          const vllmResponse = await response.json();
+          const vllmModels: BytebotAgentModel[] = vllmResponse.data.map(
+            (model: any) => ({
+              provider: 'vllm',
+              name: model.id,
+              title: `VLLM: ${model.id}`,
+              contextWindow: model.max_model_len || 32768,
+            }),
+          );
+          allModels.push(...vllmModels);
+        } else {
+          // Fallback: try health endpoint to get model info
+          const healthUrl = vllmBaseUrl.replace('/v1', '/health');
+          response = await fetch(healthUrl, {
+            method: 'GET',
+            headers,
+          });
+
+          if (response.ok) {
+            const healthResponse = await response.json();
+            if (healthResponse.model) {
+              const vllmModel: BytebotAgentModel = {
+                provider: 'vllm',
+                name: healthResponse.model,
+                title: `VLLM: ${healthResponse.model}`,
+                contextWindow: 32768,
+              };
+              allModels.push(vllmModel);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch VLLM models:', error.message);
+      }
+    }
+
+    return allModels;
   }
 
   @Get(':id')

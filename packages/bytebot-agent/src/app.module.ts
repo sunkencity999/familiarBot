@@ -13,6 +13,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SummariesModule } from './summaries/summaries.modue';
 import { ProxyModule } from './proxy/proxy.module';
+import { VllmModule } from './vllm/vllm.module';
 import { FilesController } from './files/files.controller';
 import { ClipboardController } from './files/clipboard.controller';
 
@@ -31,6 +32,7 @@ import { ClipboardController } from './files/clipboard.controller';
     OpenAIModule,
     GoogleModule,
     ProxyModule,
+    VllmModule,
     PrismaModule,
   ],
   controllers: [AppController, FilesController, ClipboardController],

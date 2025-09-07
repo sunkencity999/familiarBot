@@ -2,10 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI, { APIUserAbortError } from 'openai';
 import {
-  ChatCompletionMessageParam,
-  ChatCompletionContentPart,
-} from 'openai/resources/chat/completions';
-import {
   MessageContentBlock,
   MessageContentType,
   TextContentBlock,
@@ -18,31 +14,34 @@ import {
   ThinkingContentBlock,
 } from '@bytebot/shared';
 import { Message, Role } from '@prisma/client';
-import { proxyTools } from './proxy.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { proxyTools } from '../proxy/proxy.tools';
+import { QwenToolParser } from './qwen-tool-parser';
 
 @Injectable()
-export class ProxyService implements BytebotAgentService {
+export class VllmService implements BytebotAgentService {
   private readonly openai: OpenAI;
-  private readonly logger = new Logger(ProxyService.name);
+  private readonly logger = new Logger(VllmService.name);
+  private readonly qwenToolParser = new QwenToolParser();
 
   constructor(private readonly configService: ConfigService) {
-    const proxyUrl = this.configService.get<string>('BYTEBOT_LLM_PROXY_URL');
+    const vllmBaseUrl = this.configService.get<string>('VLLM_BASE_URL');
+    const vllmApiKey = this.configService.get<string>('VLLM_API_KEY');
 
-    if (!proxyUrl) {
+    if (!vllmBaseUrl) {
       this.logger.warn(
-        'BYTEBOT_LLM_PROXY_URL is not set. ProxyService will not work properly.',
+        'VLLM_BASE_URL is not set. VllmService will not work properly.',
       );
     }
 
-    // Initialize OpenAI client with proxy configuration
+    // Initialize OpenAI client with VLLM configuration
     this.openai = new OpenAI({
-      apiKey: 'dummy-key-for-proxy',
-      baseURL: proxyUrl,
+      apiKey: vllmApiKey || 'dummy-key-for-vllm',
+      baseURL: vllmBaseUrl,
     });
   }
 
@@ -61,16 +60,16 @@ export class ProxyService implements BytebotAgentService {
       systemPrompt,
       messages,
     );
+
     try {
       // Prepare the Chat Completion request
-      const modelName = model.includes('/') ? model.split('/')[1] : model;
-      const isReasoningModel = modelName.startsWith('o');
+      // Use minimal parameters for MLX/VLLM compatibility
       const completionRequest: OpenAI.Chat.ChatCompletionCreateParams = {
         model,
         messages: chatMessages,
         max_tokens: 8192,
-        ...(useTools && { tools: proxyTools }),
-        ...(isReasoningModel && { reasoning_effort: 'high' }),
+        temperature: 0.1,
+        // Only include basic parameters that MLX servers support
       };
 
       // Make the API call
@@ -82,11 +81,11 @@ export class ProxyService implements BytebotAgentService {
       // Process the response
       const choice = completion.choices[0];
       if (!choice || !choice.message) {
-        throw new Error('No valid response from Chat Completion API');
+        throw new Error('No valid response from VLLM Chat Completion API');
       }
 
       // Convert response to MessageContentBlocks
-      const contentBlocks = this.formatChatCompletionResponse(choice.message);
+      const contentBlocks = this.formatChatCompletionResponse(choice.message, model);
 
       return {
         contentBlocks,
@@ -98,12 +97,12 @@ export class ProxyService implements BytebotAgentService {
       };
     } catch (error: any) {
       if (error instanceof APIUserAbortError) {
-        this.logger.log('Chat Completion API call aborted');
+        this.logger.log('VLLM Chat Completion API call aborted');
         throw new BytebotAgentInterrupt();
       }
 
       this.logger.error(
-        `Error sending message to proxy: ${error.message}`,
+        `Error sending message to VLLM: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -116,8 +115,8 @@ export class ProxyService implements BytebotAgentService {
   private formatMessagesForChatCompletion(
     systemPrompt: string,
     messages: Message[],
-  ): ChatCompletionMessageParam[] {
-    const chatMessages: ChatCompletionMessageParam[] = [];
+  ): OpenAI.Chat.ChatCompletionMessageParam[] {
+    const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
     // Add system message
     chatMessages.push({
@@ -148,17 +147,10 @@ export class ProxyService implements BytebotAgentService {
               )}`,
             });
           } else if (isImageContentBlock(block)) {
+            // Skip image content for VLLM models as most don't support vision
             chatMessages.push({
               role: 'user',
-              content: [
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:${block.source.media_type};base64,${block.source.data}`,
-                    detail: 'high',
-                  },
-                },
-              ],
+              content: '[Image content skipped - VLLM model does not support vision]',
             });
           }
         }
@@ -173,88 +165,51 @@ export class ProxyService implements BytebotAgentService {
               break;
             }
             case MessageContentType.Image: {
-              const imageBlock = block as ImageContentBlock;
+              // Skip image content for VLLM models as most don't support vision
+              // Add a text description instead
               chatMessages.push({
                 role: 'user',
-                content: [
-                  {
-                    type: 'image_url',
-                    image_url: {
-                      url: `data:${imageBlock.source.media_type};base64,${imageBlock.source.data}`,
-                      detail: 'high',
-                    },
-                  },
-                ],
+                content: '[Image content skipped - VLLM model does not support vision]',
               });
               break;
             }
             case MessageContentType.ToolUse: {
+              // Convert tool use to text format for MLX compatibility
               const toolBlock = block as ToolUseContentBlock;
               chatMessages.push({
                 role: 'assistant',
-                tool_calls: [
-                  {
-                    id: toolBlock.id,
-                    type: 'function',
-                    function: {
-                      name: toolBlock.name,
-                      arguments: JSON.stringify(toolBlock.input),
-                    },
-                  },
-                ],
+                content: `\`\`\`json\n${JSON.stringify({
+                  name: toolBlock.name,
+                  input: toolBlock.input
+                })}\n\`\`\``,
               });
               break;
             }
             case MessageContentType.Thinking: {
               const thinkingBlock = block as ThinkingContentBlock;
-              const message: ChatCompletionMessageParam = {
+              chatMessages.push({
                 role: 'assistant',
-                content: null,
-              };
-              message['reasoning_content'] = thinkingBlock.thinking;
-              chatMessages.push(message);
+                content: `[Thinking: ${thinkingBlock.thinking}]`,
+              });
               break;
             }
             case MessageContentType.ToolResult: {
+              // Convert tool results to user messages for MLX compatibility
               const toolResultBlock = block as ToolResultContentBlock;
-
-              if (
-                toolResultBlock.content.every(
-                  (content) => content.type === MessageContentType.Image,
-                )
-              ) {
-                chatMessages.push({
-                  role: 'tool',
-                  tool_call_id: toolResultBlock.tool_use_id,
-                  content: 'screenshot',
-                });
-              }
 
               toolResultBlock.content.forEach((content) => {
                 if (content.type === MessageContentType.Text) {
                   chatMessages.push({
-                    role: 'tool',
-                    tool_call_id: toolResultBlock.tool_use_id,
-                    content: content.text,
+                    role: 'user',
+                    content: `Tool result: ${content.text}`,
                   });
                 }
 
                 if (content.type === MessageContentType.Image) {
+                  // Skip image content for VLLM models as most don't support vision
                   chatMessages.push({
                     role: 'user',
-                    content: [
-                      {
-                        type: 'text',
-                        text: 'Screenshot',
-                      },
-                      {
-                        type: 'image_url',
-                        image_url: {
-                          url: `data:${content.source.media_type};base64,${content.source.data}`,
-                          detail: 'high',
-                        },
-                      },
-                    ],
+                    content: 'Tool result: [Image content skipped - VLLM model does not support vision]',
                   });
                 }
               });
@@ -273,23 +228,34 @@ export class ProxyService implements BytebotAgentService {
    */
   private formatChatCompletionResponse(
     message: OpenAI.Chat.ChatCompletionMessage,
+    model?: string,
   ): MessageContentBlock[] {
     const contentBlocks: MessageContentBlock[] = [];
 
     // Handle text content
     if (message.content) {
-      contentBlocks.push({
-        type: MessageContentType.Text,
-        text: message.content,
-      } as TextContentBlock);
-    }
-
-    if (message['reasoning_content']) {
-      contentBlocks.push({
-        type: MessageContentType.Thinking,
-        thinking: message['reasoning_content'],
-        signature: message['reasoning_content'],
-      } as ThinkingContentBlock);
+      // Check if this is a Qwen3-Coder model and parse XML tool calls
+      const isQwenCoder = model && (model.toLowerCase().includes('qwen') && model.toLowerCase().includes('coder'));
+      
+      if (isQwenCoder && this.qwenToolParser.hasQwenToolCalls(message.content)) {
+        // Parse Qwen XML tool calls and add them as tool use blocks
+        const qwenToolBlocks = this.qwenToolParser.parseToolCall(message.content);
+        contentBlocks.push(...qwenToolBlocks);
+        
+        // Remove tool call XML from text content
+        const textContent = message.content.replace(/<tool_call>.*?<\/tool_call>/gs, '').trim();
+        if (textContent) {
+          contentBlocks.push({
+            type: MessageContentType.Text,
+            text: textContent,
+          } as TextContentBlock);
+        }
+      } else {
+        contentBlocks.push({
+          type: MessageContentType.Text,
+          text: message.content,
+        } as TextContentBlock);
+      }
     }
 
     // Handle tool calls

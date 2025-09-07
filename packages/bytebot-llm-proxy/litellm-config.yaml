@@ -37,8 +37,20 @@ model_list:
 
   # Local: Generic OpenAI-compatible endpoint (e.g., FastAPI following OpenAI spec)
   # Set LOCAL_OPENAI_BASE to http://your-fastapi:8000/v1 and, if needed, LOCAL_OPENAI_API_KEY
+  # 
+  # IMPORTANT: Model selection affects reasoning parameter support:
+  # - For NON-reasoning models: Use gpt-4o, gpt-4, gpt-3.5-turbo, etc.
+  # - For REASONING models: Use o1-mini, o1-preview, o3-mini, etc.
+  # The ProxyService automatically detects reasoning models (starting with 'o') and includes reasoning_effort parameter
   - model_name: local-openai-compat
     litellm_params:
-      model: openai/gpt-4o-mini
+      model: openai/gpt-4o  # Use gpt-4o for non-reasoning. Change to openai/o1-mini for reasoning models
       api_base: os.environ/LOCAL_OPENAI_BASE
       api_key: os.environ/LOCAL_OPENAI_API_KEY
+
+  # VLLM: Local VLLM models via FastAPI (OpenAI-compatible)
+  # Set VLLM_BASE_URL to your VLLM FastAPI endpoint (e.g., http://localhost:8000/v1)
+  # VLLM models will be dynamically discovered from the /v1/models endpoint
+
+litellm_settings:
+  drop_params: true

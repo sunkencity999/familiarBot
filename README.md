@@ -12,7 +12,7 @@
 [🌐 Website](https://bytebot.ai) • [📚 Documentation](https://docs.bytebot.ai) • [💬 Discord](https://discord.com/invite/d9ewZkWPTP) • [𝕏 Twitter](https://x.com/bytebot_ai)
 
 </div>
-This is a an AI agent that was built from an open-source desktop agent named bytebot. We have extended it's capabilites to be improve it's usefulness as a working tool, and to enable the use of proprietary AI models, and on-premises AI models for greater security and privacy.
+This is a an AI agent that was built from an open-source desktop agent named bytebot. We have extended it's capabilites to improve it's usefulness as a working tool, and to enable the use of proprietary AI models, and on-premises AI models for greater security and privacy.
 
 
 ## What is a Desktop Agent?
@@ -64,7 +64,7 @@ Jobybot isn't limited to web interfaces. It can:
 
 ### Deploy in 2 Minutes
 
-**Option 1: Docker Compose**
+**Option 1: Docker Compose (Standard)**
 
 ```bash
 git clone https://github.com/sunkencity999/familiarBot.git
@@ -79,27 +79,36 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." > docker/.env
 docker build -t familiarbot-ui-fixed:latest -f packages/bytebot-ui/Dockerfile packages/
 
 # Start all services
-docker-compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
+
+# Open http://localhost:9992
+```
+
+**Option 2: With Local Models (Recommended)**
+
+```bash
+git clone https://github.com/sunkencity999/familiarBot.git
+cd familiarBot
+
+# Add your AI provider keys (optional - can use local models only)
+echo "ANTHROPIC_API_KEY=sk-ant-..." > docker/.env
+echo "OPENAI_API_KEY=sk-..." >> docker/.env
+
+# For local OpenAI-compatible endpoint (optional)
+echo "LOCAL_OPENAI_BASE=http://your-server:8000/v1" >> docker/.env
+echo "LOCAL_OPENAI_API_KEY=your_key" >> docker/.env
+
+# Start all services with local model support
+docker compose -f docker/docker-compose.proxy.yml up -d
 
 # Open http://localhost:9992
 ```
 
 [Full deployment guide →](https://docs.bytebot.ai/quickstart)
 
-**Option 3: Local LLMs (LiteLLM + optional Ollama)**
-
-Run Jobybot with a local LLM proxy and (optionally) Ollama:
+### Optional: Pre-pull Ollama Models
 
 ```bash
-git clone https://github.com/sunkencity999/familiarBot.git
-cd familiarBot
-
-# Start desktop, DB, agent, UI, and the LLM proxy (with optional Ollama)
-docker compose -f docker/docker-compose.proxy.yml up -d
-
-# Open http://localhost:9992 and select a model from the "proxy" provider,
-# e.g., "ollama-llama3.1-8b" or "local-openai-compat".
-
 # If using Ollama for the first time, pre-pull a model (optional):
 docker exec -it bytebot-ollama ollama pull llama3.1:8b
 ```

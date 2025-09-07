@@ -39,6 +39,7 @@ import {
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
+import { VllmService } from '../vllm/vllm.service';
 
 @Injectable()
 export class AgentProcessor {
@@ -56,6 +57,7 @@ export class AgentProcessor {
     private readonly openaiService: OpenAIService,
     private readonly googleService: GoogleService,
     private readonly proxyService: ProxyService,
+    private readonly vllmService: VllmService,
     private readonly inputCaptureService: InputCaptureService,
   ) {
     this.services = {
@@ -63,6 +65,7 @@ export class AgentProcessor {
       openai: this.openaiService,
       google: this.googleService,
       proxy: this.proxyService,
+      vllm: this.vllmService,
     };
     this.logger.log('AgentProcessor initialized');
   }
@@ -383,9 +386,21 @@ export class AgentProcessor {
         }
       }
 
-      // Schedule the next iteration without blocking
-      if (this.isProcessing) {
+      // Schedule the next iteration only if task is not completed and has tool use blocks
+      const hasToolUseBlocks = messageContentBlocks.some(
+        (block) => block.type === MessageContentType.ToolUse,
+      );
+      
+      if (this.isProcessing && hasToolUseBlocks && !setTaskStatusToolUseBlock) {
         setImmediate(() => this.runIteration(taskId));
+      } else if (this.isProcessing && !hasToolUseBlocks && !setTaskStatusToolUseBlock) {
+        // If no tool use blocks and no task status change, mark as completed
+        await this.tasksService.update(taskId, {
+          status: TaskStatus.COMPLETED,
+          completedAt: new Date(),
+        });
+        this.isProcessing = false;
+        this.currentTaskId = null;
       }
     } catch (error: any) {
       if (error?.name === 'BytebotAgentInterrupt') {
