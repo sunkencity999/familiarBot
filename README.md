@@ -1,17 +1,12 @@
-<div align="center">
-
-<img src="static/jobybotlogo.png" width="500" alt="Jobybot Logo">
-
 # Jobybot: AI Desktop Agent
 
-**An AI that has its own computer to complete tasks for you**
+An AI that has its own computer to complete tasks for you
+
+![Jobybot Logo](static/jobybotlogo.png)
 
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://github.com/bytebot-ai/bytebot/tree/main/docker)
 
-
-[🌐 Website](https://bytebot.ai) • [📚 Documentation](https://docs.bytebot.ai) • [💬 Discord](https://discord.com/invite/d9ewZkWPTP) • [𝕏 Twitter](https://x.com/bytebot_ai)
-
-</div>
+[Website](https://bytebot.ai) • [Documentation](https://docs.bytebot.ai) • [Discord](https://discord.com/invite/d9ewZkWPTP) • [Twitter/X](https://x.com/bytebot_ai)
 This is a an AI agent that was built from an open-source desktop agent named bytebot. We have extended it's capabilites to improve it's usefulness as a working tool, and to enable the use of proprietary AI models, and on-premises AI models for greater security and privacy.
 
 
@@ -70,18 +65,20 @@ Jobybot isn't limited to web interfaces. It can:
 git clone https://github.com/sunkencity999/familiarBot.git
 cd familiarBot
 
-# Add your AI provider key (choose one)
-echo "ANTHROPIC_API_KEY=sk-ant-..." > docker/.env
-# Or: echo "OPENAI_API_KEY=sk-..." > docker/.env
-# Or: echo "GEMINI_API_KEY=..." > docker/.env
+# 1) Configure environment (edit docker/.env)
+# Provide at least one model provider key; you can add more as available
+# Required format examples (open docker/.env and set):
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   OPENAI_API_KEY=sk-...
+#   GEMINI_API_KEY=...
 
-# Build the custom UI image with folder navigation fix
-docker build -t familiarbot-ui-fixed:latest -f packages/bytebot-ui/Dockerfile packages/
+# 2) Start services (builds images automatically)
+docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
 
-# Start all services
-docker compose -f docker/docker-compose.yml up -d
-
-# Open http://localhost:9992
+# 3) Open the UI
+#   UI:       http://localhost:9992
+#   Agent:    http://localhost:9991 (REST API)
+#   Desktop:  http://localhost:9990 (noVNC via /websockify)
 ```
 
 **Option 2: With Local Models (Recommended)**
@@ -90,21 +87,46 @@ docker compose -f docker/docker-compose.yml up -d
 git clone https://github.com/sunkencity999/familiarBot.git
 cd familiarBot
 
-# Add your AI provider keys (optional - can use local models only)
-echo "ANTHROPIC_API_KEY=sk-ant-..." > docker/.env
-echo "OPENAI_API_KEY=sk-..." >> docker/.env
+# 1) Configure environment in docker/.env
+# Optional local endpoints
+#   LOCAL_OPENAI_BASE=http://your-fastapi-openai-compat:8000/v1
+#   LOCAL_OPENAI_API_KEY=your_key
+# VLLM (OpenAI-compatible /v1)
+#   VLLM_BASE_URL=http://your-vllm:8000/v1
+#   VLLM_API_KEY=optional_key
+# Provider keys are still supported alongside local models
 
-# For local OpenAI-compatible endpoint (optional)
-echo "LOCAL_OPENAI_BASE=http://your-server:8000/v1" >> docker/.env
-echo "LOCAL_OPENAI_API_KEY=your_key" >> docker/.env
+# 2) Bring up stack with proxy and optional Ollama
+docker compose -f docker/docker-compose.proxy.yml --env-file docker/.env up -d
 
-# Start all services with local model support
-docker compose -f docker/docker-compose.proxy.yml up -d
-
-# Open http://localhost:9992
+# 3) Open the UI at http://localhost:9992
 ```
 
 [Full deployment guide →](https://docs.bytebot.ai/quickstart)
+
+## Getting Started (TL;DR)
+
+1. __Clone the repo__
+   - `git clone https://github.com/sunkencity999/familiarBot.git && cd familiarBot`
+
+2. __Configure environment__
+   - Copy `docker/.env.example` to `docker/.env`
+   - Fill in at least one provider key (e.g., `OPENAI_API_KEY`) or set local endpoints (`LOCAL_OPENAI_BASE`, `VLLM_BASE_URL`).
+
+3. __Start the stack__
+   - Standard: `docker compose -f docker/docker-compose.yml --env-file docker/.env up -d`
+   - With local models: `docker compose -f docker/docker-compose.proxy.yml --env-file docker/.env up -d`
+
+4. __Open the app__
+   - UI: `http://localhost:9992`
+   - Pick a model from the dropdown (proxy/VLLM models are preferred and auto-discovered).
+
+5. __Run a first task__
+   - “Create a file named hello.txt on the desktop containing ‘Hello Jobybot’.”
+
+6. __Troubleshooting__
+   - If models list is empty, confirm `docker/.env` values and that the proxy/local endpoints are reachable.
+   - For stuck PENDING tasks, use `Force Resume` on the task page, or clean old pending via `Clear Pending > 5min Old`.
 
 ### Optional: Pre-pull Ollama Models
 
@@ -137,7 +159,7 @@ Jobybot consists of four integrated components:
 
 ### Basic Examples
 
-```
+```text
 "Go to Wikipedia and create a summary of quantum computing"
 "Research flights from NYC to London and create a comparison document"
 "Take screenshots of the top 5 news websites"
@@ -145,7 +167,7 @@ Jobybot consists of four integrated components:
 
 ### Document Processing
 
-```
+```text
 "Read the uploaded contracts.pdf and extract all payment terms and deadlines"
 "Process these 5 invoice PDFs and create a summary report"
 "Download and analyze the latest financial report and answer: What were the key risks mentioned?"
@@ -153,7 +175,7 @@ Jobybot consists of four integrated components:
 
 ### Multi-Application Workflows
 
-```
+```text
 "Download last month's bank statements from our three banks and consolidate them"
 "Check all our vendor portals for new invoices and create a summary report"
 "Log into our CRM, export the customer list, and update records in the ERP system"
@@ -277,14 +299,26 @@ Files to know:
 - `docker/docker-compose.proxy.yml`: brings up `bytebot-llm-proxy` and (optionally) `bytebot-ollama`
 - `packages/bytebot-llm-proxy/litellm-config.yaml`: models exposed via the proxy
 
-Environment variables:
+Environment variables (set in `docker/.env`):
 
-- `BYTEBOT_LLM_PROXY_URL`: set for the agent to fetch models and route completions (defaults to `http://bytebot-llm-proxy:4000` in the proxy compose file)
+- `BYTEBOT_LLM_PROXY_URL`: agent’s proxy base URL (defaults to `http://bytebot-llm-proxy:4000` in proxy compose)
 - `OLLAMA_BASE_URL`: base URL for Ollama (defaults to `http://bytebot-ollama:11434`)
 - `LOCAL_OPENAI_BASE`: base URL of an OpenAI-compatible endpoint (e.g., FastAPI `/v1`)
 - `LOCAL_OPENAI_API_KEY`: optional API key for your local endpoint
+- `VLLM_BASE_URL`: base URL to a VLLM server exposing `/v1`
+- `VLLM_API_KEY`: optional API key for your VLLM endpoint
 
-Once running, open the UI and pick a model under the provider `proxy` (e.g., `ollama-llama3.1-8b` or `local-openai-compat`).
+Once running, open the UI and pick a model under provider `proxy` (e.g., `local-openai-compat` or your VLLM models).
+
+### Model List Reliability
+
+- The model picker shows only models confirmed reachable from your configuration.
+- Proxy/VLLM-discovered models are preferred over static entries to avoid unusable variants.
+
+### Task Management Helpers
+
+- `Clear Pending > 5min Old`: deletes pending tasks older than 5 minutes that are not queued.
+- `Force Resume` (on a task page): immediately resumes a stuck PENDING task.
 
 
 
@@ -316,12 +350,8 @@ Jobybot is under the MIT license.
 
 ---
 
-<div align="center">
-
 **Give your AI its own computer. See what it can do.**
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
 
-<sub>Built by [Tantl Labs](https://tantl.com), Christopher Bradford (internally) and the open source community</sub>
-
-</div>
+Built by [Tantl Labs](https://tantl.com), Christopher Bradford (internally) and the open source community
