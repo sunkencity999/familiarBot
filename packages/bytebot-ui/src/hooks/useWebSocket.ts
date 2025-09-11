@@ -23,14 +23,18 @@ export function useWebSocket({
       return socketRef.current;
     }
 
-    // Connect to the WebSocket server
-    const socket = io({
+    // Prefer proxying via the UI server to avoid host networking issues.
+    // The UI server proxies '/api/proxy/tasks' to the agent's '/socket.io'.
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+
+    const socket = io(baseUrl!, {
       path: "/api/proxy/tasks",
       transports: ["websocket"],
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      withCredentials: true,
     });
 
     socket.on("connect", () => {

@@ -16,6 +16,70 @@ const coordinateSchema = {
   required: ['x', 'y'],
 };
 
+export const _mkdirTool = {
+  name: 'computer_mkdir',
+  description:
+    'Creates a directory under /home/user. By default it creates parent directories as needed (recursive).',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string' as const,
+        description:
+          'Directory path to create (e.g., /home/user/Documents/site/assets or Documents/site/assets)',
+      },
+      recursive: {
+        type: 'boolean' as const,
+        nullable: true,
+        description: 'Create parent directories as needed (defaults to true)',
+      },
+    },
+    required: ['path'],
+  },
+};
+
+export const _writeFilesTool = {
+  name: 'computer_write_files',
+  description:
+    'Writes multiple files to the user\'s computer in one call. Each file can be text or base64.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      files: {
+        type: 'array' as const,
+        items: {
+          type: 'object' as const,
+          properties: {
+            path: {
+              type: 'string' as const,
+              description:
+                'Path to write under /home/user (e.g., Documents/website/index.html)',
+            },
+            encoding: {
+              type: 'string' as const,
+              enum: ['text', 'base64'],
+              description: 'Encoding of the provided content',
+            },
+            content: {
+              type: 'string' as const,
+              description: 'File content in the specified encoding',
+            },
+            mediaType: {
+              type: 'string' as const,
+              nullable: true,
+              description:
+                'Optional media type (e.g., text/html) when using base64',
+            },
+          },
+          required: ['path', 'encoding', 'content'],
+        },
+        description: 'Array of files to write',
+      },
+    },
+    required: ['files'],
+  },
+};
+
 const holdKeysSchema = {
   type: 'array' as const,
   items: { type: 'string' as const },
@@ -275,6 +339,89 @@ export const _screenshotTool = {
   },
 };
 
+export const _saveScreenshotTool = {
+  name: 'computer_save_screenshot',
+  description:
+    'Captures a screenshot of the current screen and saves it directly to a file path',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string' as const,
+        description: 'Absolute path where the screenshot should be saved (e.g., /home/user/Documents/desktop.png)',
+      },
+    },
+    required: ['path'],
+  },
+};
+
+// (read file tool is defined later; avoid duplicate definition here)
+
+export const _writeFileTool = {
+  name: 'computer_write_file',
+  description:
+    'Writes a file to the user\'s computer. Provide either plain text or base64 content.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string' as const,
+        description:
+          'Path to write under /home/user (e.g., /home/user/Documents/website/index.html or Documents/website/index.html)',
+      },
+      encoding: {
+        type: 'string' as const,
+        enum: ['text', 'base64'],
+        description: 'Encoding of the provided content',
+      },
+      content: {
+        type: 'string' as const,
+        description: 'File content in the specified encoding',
+      },
+      mediaType: {
+        type: 'string' as const,
+        nullable: true,
+        description:
+          'Optional media type for the file (e.g., text/html, text/css, application/json) when using base64',
+      },
+    },
+    required: ['path', 'encoding', 'content'],
+  },
+};
+
+export const _clickByTextTool = {
+  name: 'computer_click_by_text',
+  description:
+    'Finds on-screen text via OCR and clicks the center of the matched text bounding box',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      text: {
+        type: 'string' as const,
+        description: 'The exact text to click (case-insensitive match)',
+      },
+      region: {
+        type: 'object' as const,
+        nullable: true,
+        description: 'Optional search region to constrain OCR',
+        properties: {
+          x: { type: 'number' as const },
+          y: { type: 'number' as const },
+          width: { type: 'number' as const },
+          height: { type: 'number' as const },
+        },
+        required: ['x', 'y', 'width', 'height'],
+      },
+      fuzz: {
+        type: 'number' as const,
+        nullable: true,
+        description: 'Optional fuzz ratio (0-1) for substring similarity; defaults to strict contains',
+      },
+    },
+    required: ['text'],
+  },
+};
+
 export const _cursorPositionTool = {
   name: 'computer_cursor_position',
   description: 'Gets the current (x, y) coordinates of the mouse cursor',
@@ -397,9 +544,14 @@ export const agentTools = [
   _pasteTextTool,
   _waitTool,
   _screenshotTool,
+  _saveScreenshotTool,
   _applicationTool,
   _cursorPositionTool,
+  _clickByTextTool,
   _setTaskStatusTool,
   _createTaskTool,
   _readFileTool,
+  _writeFileTool,
+  _writeFilesTool,
+  _mkdirTool,
 ];

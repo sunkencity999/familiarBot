@@ -112,3 +112,19 @@ model File {
   taskId        String
 }
 
+
+// Defines recurring jobs that create Tasks on a cron schedule
+model RecurringTask {
+  id           String       @id @default(uuid())
+  description  String
+  cron         String       // Cron expression in target timezone
+  timezone     String       // IANA timezone, e.g., "America/Los_Angeles"
+  active       Boolean      @default(true)
+  nextRunAt    DateTime
+  lastRunAt    DateTime?
+  priority     TaskPriority @default(MEDIUM)
+  createdBy    Role         @default(USER)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  model        Json
+}

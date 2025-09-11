@@ -33,7 +33,6 @@ async function apiRequest<T>(
         `API request failed: ${response.status} ${response.statusText}`,
       );
     }
-
     return await response.json();
   } catch (error) {
     console.error(`Error in API request to ${endpoint}:`, error);
@@ -125,6 +124,7 @@ export async function startTask(data: {
   description: string;
   model: Model;
   files?: FileWithBase64[];
+  scheduledFor?: string; // ISO string; backend will parse to Date
 }): Promise<Task | null> {
   return apiRequest<Task>("/tasks", {
     method: "POST",
@@ -251,9 +251,138 @@ export async function resumeTask(taskId: string): Promise<Task | null> {
   return apiRequest<Task>(`/tasks/${taskId}/resume`, { method: "POST" });
 }
 
+export async function forceResumeTask(taskId: string): Promise<Task | null> {
+  return apiRequest<Task>(`/tasks/${taskId}/force-resume`, { method: "POST" });
+}
+
 /**
  * Cancels a running task
  */
 export async function cancelTask(taskId: string): Promise<Task | null> {
   return apiRequest<Task>(`/tasks/${taskId}/cancel`, { method: "POST" });
+}
+
+/**
+ * Fetch upcoming scheduled tasks (not yet queued)
+ */
+export async function fetchScheduledTasks(): Promise<Task[]> {
+  const result = await apiRequest<Task[]>(`/tasks/scheduled`, { method: "GET" });
+  return result || [];
+}
+
+/**
+ * Delete a task by id
+ */
+export async function deleteTask(taskId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_CONFIG.baseUrl}/tasks/${taskId}`, {
+      method: "DELETE",
+      headers: API_CONFIG.headers,
+      credentials: API_CONFIG.credentials,
+    });
+    return response.ok;
+  } catch (e) {
+    console.error("Failed to delete task", e);
+    return false;
+  }
+}
+
+/**
+ * Bulk delete tasks by status, with optional age and queued filters
+ */
+export async function bulkDeleteTasks(params: {
+  status: string;
+  olderThanMinutes?: number;
+  unqueuedOnly?: boolean;
+}): Promise<{ count: number; ids: string[] } | null> {
+  const query = buildQueryString({
+    status: params.status,
+    ...(params.olderThanMinutes !== undefined
+      ? { olderThanMinutes: params.olderThanMinutes }
+      : {}),
+    ...(params.unqueuedOnly !== undefined
+      ? { unqueuedOnly: params.unqueuedOnly }
+      : {}),
+  });
+  try {
+    const res = await fetch(`${API_CONFIG.baseUrl}/tasks${query}`, {
+      method: "DELETE",
+      headers: API_CONFIG.headers,
+      credentials: API_CONFIG.credentials,
+    });
+    if (!res.ok) {
+      throw new Error(`Bulk delete failed: ${res.status} ${res.statusText}`);
+    }
+    return await res.json();
+  } catch (e) {
+    console.error("Failed to bulk delete tasks", e);
+    return null;
+  }
+}
+
+// ==========================
+// Recurring task API helpers
+// ==========================
+
+export interface CreateRecurringPayload {
+  description: string;
+  cron: string;
+  timezone: string; // IANA timezone
+  priority?: TaskStatus | string; // will be normalized on server
+  model: Model;
+}
+
+export interface RecurringItem {
+  id: string;
+  description: string;
+  cron: string;
+  timezone: string;
+  active: boolean;
+  nextRunAt: string;
+  lastRunAt?: string;
+  priority: string;
+  createdBy: string;
+  model: Model;
+}
+
+export async function createRecurring(data: CreateRecurringPayload): Promise<RecurringItem | null> {
+  return apiRequest<RecurringItem>(`/recurring`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listRecurring(active?: boolean): Promise<RecurringItem[]> {
+  const q = typeof active === 'boolean' ? `?active=${active}` : '';
+  const res = await apiRequest<RecurringItem[]>(`/recurring${q}`, { method: 'GET' });
+  return res || [];
+}
+
+export async function pauseRecurring(id: string): Promise<RecurringItem | null> {
+  return apiRequest<RecurringItem>(`/recurring/${id}/pause`, { method: 'POST' });
+}
+
+export async function resumeRecurring(id: string): Promise<RecurringItem | null> {
+  return apiRequest<RecurringItem>(`/recurring/${id}/resume`, { method: 'POST' });
+}
+
+export async function deleteRecurring(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_CONFIG.baseUrl}/recurring/${id}`, {
+      method: "DELETE",
+      headers: API_CONFIG.headers,
+      credentials: API_CONFIG.credentials,
+    });
+    return response.ok;
+  } catch (e) {
+    console.error('Failed to delete recurring', e);
+    return false;
+  }
+}
+
+export async function updateRecurring(id: string, data: Partial<CreateRecurringPayload> & { active?: boolean }): Promise<RecurringItem | null> {
+  return apiRequest<RecurringItem>(`/recurring/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }

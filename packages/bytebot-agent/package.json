@@ -33,15 +33,17 @@
     "@nestjs/platform-socket.io": "^11.1.1",
     "@nestjs/schedule": "^6.0.0",
     "@nestjs/websockets": "^11.1.1",
-    "@prisma/client": "^6.6.0",
+    "@prisma/client": "^6.16.1",
     "@thallesp/nestjs-better-auth": "^1.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "cron-parser": "^4.9.0",
     "openai": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
+    "tesseract.js": "^5.0.5",
     "zod": "^4.0.5"
   },
   "devDependencies": {
@@ -70,6 +72,8 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
+    ,
+    "prisma": "^6.16.1"
   },
   "jest": {
     "moduleFileExtensions": [

@@ -15,6 +15,8 @@ import {
 import { startTask } from "@/utils/taskUtils";
 import { Model } from "@/types";
 import { TaskList } from "@/components/tasks/TaskList";
+import { ScheduledTaskList } from "@/components/tasks/ScheduledTaskList";
+import { RecurringTasksPanel } from "@/components/tasks/RecurringTasksPanel";
 
 interface StockPhotoProps {
   src: string;
@@ -47,6 +49,8 @@ export default function Home() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<FileWithBase64[]>([]);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState<string>("");
   const router = useRouter();
   const [activePopoverIndex, setActivePopoverIndex] = useState<number | null>(
     null,
@@ -106,6 +110,7 @@ export default function Home() {
         description: string;
         model: Model;
         files?: FileWithBase64[];
+        scheduledFor?: string;
       } = {
         description: input,
         model: selectedModel,
@@ -114,6 +119,11 @@ export default function Home() {
       // Include files if any are uploaded
       if (uploadedFiles.length > 0) {
         taskData.files = uploadedFiles;
+      }
+
+      // Include schedule if enabled and valid
+      if (isScheduled && scheduledFor) {
+        taskData.scheduledFor = new Date(scheduledFor).toISOString();
       }
 
       const task = await startTask(taskData);
@@ -161,9 +171,31 @@ export default function Home() {
                   onFileUpload={handleFileUpload}
                   minLines={3}
                 />
+                {/* Scheduling controls */}
+                <div className="mt-3 flex flex-col gap-2 px-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={isScheduled}
+                      onChange={(e) => setIsScheduled(e.target.checked)}
+                    />
+                    <span>Schedule this task for later</span>
+                  </label>
+                  {isScheduled && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="datetime-local"
+                        className="border-bytebot-bronze-light-7 w-full max-w-xs rounded-md border bg-transparent p-2 text-sm"
+                        value={scheduledFor}
+                        onChange={(e) => setScheduledFor(e.target.value)}
+                      />
+                      <span className="text-xs text-bytebot-bronze-light-10">Times are in your local timezone</span>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-2">
                   <Select
-                    value={selectedModel?.name}
+                    value={selectedModel?.name ?? ""}
                     onValueChange={(val) =>
                       setSelectedModel(
                         models.find((m) => m.name === val) || null,
@@ -189,6 +221,12 @@ export default function Home() {
                 title="Latest Tasks"
                 description="You'll see tasks that are completed, scheduled, or require your attention."
               />
+              <div className="mt-6 w-full">
+                <ScheduledTaskList />
+              </div>
+              <div className="mt-6 w-full">
+                <RecurringTasksPanel />
+              </div>
             </div>
           </div>
 
@@ -219,9 +257,31 @@ export default function Home() {
                   onFileUpload={handleFileUpload}
                   minLines={3}
                 />
+                {/* Scheduling controls */}
+                <div className="mt-3 flex flex-col gap-2 px-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={isScheduled}
+                      onChange={(e) => setIsScheduled(e.target.checked)}
+                    />
+                    <span>Schedule this task for later</span>
+                  </label>
+                  {isScheduled && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="datetime-local"
+                        className="border-bytebot-bronze-light-7 w-full max-w-xs rounded-md border bg-transparent p-2 text-sm"
+                        value={scheduledFor}
+                        onChange={(e) => setScheduledFor(e.target.value)}
+                      />
+                      <span className="text-xs text-bytebot-bronze-light-10">Times are in your local timezone</span>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-2">
                   <Select
-                    value={selectedModel?.name}
+                    value={selectedModel?.name ?? ""}
                     onValueChange={(val) =>
                       setSelectedModel(
                         models.find((m) => m.name === val) || null,
@@ -247,6 +307,12 @@ export default function Home() {
                 title="Latest Tasks"
                 description="You'll see tasks that are completed, scheduled, or require your attention."
               />
+              <div className="mt-6 w-full">
+                <ScheduledTaskList />
+              </div>
+              <div className="mt-6 w-full">
+                <RecurringTasksPanel />
+              </div>
             </div>
           </div>
         </div>

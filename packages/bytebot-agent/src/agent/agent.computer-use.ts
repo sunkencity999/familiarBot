@@ -25,10 +25,82 @@ import { Logger } from '@nestjs/common';
 
 const BYTEBOT_DESKTOP_BASE_URL = process.env.BYTEBOT_DESKTOP_BASE_URL as string;
 
+// -------- Interlock state (module-scoped) --------
+const __agentInterlock: { active: boolean; taskId: string | null } = {
+  active: false,
+  taskId: null,
+};
+
+export function setAgentInterlockActive(taskId: string) {
+  __agentInterlock.active = true;
+  __agentInterlock.taskId = taskId;
+}
+
+export function clearAgentInterlock() {
+  __agentInterlock.active = false;
+  __agentInterlock.taskId = null;
+}
+
+// -------- Allowed tools gating (module-scoped) --------
+let __allowedTools: Set<string> | null = null;
+export function setAllowedTools(toolNames: string[]) {
+  __allowedTools = new Set(toolNames);
+}
+export function clearAllowedTools() {
+  __allowedTools = null;
+}
+
 export async function handleComputerToolUse(
-  block: ComputerToolUseContentBlock,
+  block: any,
   logger: Logger,
 ): Promise<ToolResultContentBlock> {
+  // Safety interlock: block actions unless agent is actively processing
+  if (!__agentInterlock.active) {
+    return {
+      type: MessageContentType.ToolResult,
+      tool_use_id: (block as any)?.id ?? '',
+      content: [
+        {
+          type: MessageContentType.Text,
+          text: 'ERROR: Agent is not actively processing a task; tool execution is disabled.',
+        },
+      ],
+      is_error: true,
+    } as any;
+  }
+  // Allowed tools gate: if set, block any tool not on the allowlist
+  if (__allowedTools && !__allowedTools.has(block?.name)) {
+    return {
+      type: MessageContentType.ToolResult,
+      tool_use_id: (block as any)?.id ?? '',
+      content: [
+        {
+          type: MessageContentType.Text,
+          text: `ERROR: Tool '${block?.name}' is not permitted in this task. Use the approved tools only.`,
+        },
+      ],
+      is_error: true,
+    } as any;
+  }
+
+  // Helper: ensure parent directory exists via desktop mkdir action (best effort)
+  async function ensureParentDir(filepath: string, logger: Logger) {
+    try {
+      const idx = filepath.lastIndexOf('/');
+      if (idx <= 0) return;
+      const dir = filepath.slice(0, idx);
+      const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mkdir', path: dir, recursive: true }),
+      });
+      if (!response.ok) {
+        logger.warn(`ensureParentDir: mkdir failed with status ${response.status} for ${dir}`);
+      }
+    } catch (e: any) {
+      logger.warn(`ensureParentDir: mkdir threw: ${e?.message}`);
+    }
+  }
   logger.debug(
     `Handling computer tool use: ${block.name}, tool_use_id: ${block.id}`,
   );
@@ -107,6 +179,385 @@ export async function handleComputerToolUse(
   }
 
   try {
+    // Read dynamic properties via any to avoid union-type exhaustiveness issues
+    const b: any = block as any;
+    const blockName: string = b.name;
+    const blockId: string = b.id;
+
+    // Dispatch high-level helpers first
+    if (blockName === 'computer_save_screenshot') {
+      const rawPath = b.input?.path as string;
+      if (!rawPath) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Missing required input "path"' },
+          ],
+          is_error: true,
+        };
+      }
+      const HOME = '/home/user';
+      const now = new Date();
+      const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      let p = String(rawPath).trim();
+      if (p.startsWith('~')) p = p.replace(/^~\/?/, HOME + '/');
+      if (!p.startsWith('/')) p = `${HOME}/${p}`;
+      p = p.replace(/\/+/, '/').replace(/\/+/, '/');
+      if (p.includes('..')) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Path traversal (..) is not allowed. Provide a path under /home/user' },
+          ],
+          is_error: true,
+        };
+      }
+      if (!p.startsWith(HOME + '/')) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Only paths under /home/user are allowed' },
+          ],
+          is_error: true,
+        };
+      }
+      const looksDir = /\/$/.test(p) || /\.(png|jpg|jpeg)$/i.test(p) === false;
+      const targetPath = looksDir ? `${p.replace(/\/$/, '')}/screenshot-${ts}.png` : p;
+      try {
+        const image = await screenshot();
+        const writeRes = await writeFile({ path: targetPath, content: image });
+        if (!writeRes.success) throw new Error(writeRes.message || 'Unknown error writing file');
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `Screenshot saved to ${targetPath}` },
+          ],
+        };
+      } catch (e: any) {
+        logger.error(`computer_save_screenshot failed: ${e.message}`, e.stack);
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `ERROR: ${e.message}` },
+          ],
+          is_error: true,
+        };
+      }
+    }
+
+    if (blockName === 'computer_write_file') {
+      const { path: rawPath, encoding, content } = b.input || {};
+      if (!rawPath || !encoding || typeof content !== 'string') {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Missing required input: path, encoding, and content are required' },
+          ],
+          is_error: true,
+        };
+      }
+      const HOME = '/home/user';
+      let p = String(rawPath).trim();
+      if (p.startsWith('~')) p = p.replace(/^~\/?/, HOME + '/');
+      if (!p.startsWith('/')) p = `${HOME}/${p}`;
+      p = p.replace(/\/+/, '/').replace(/\/+/, '/');
+      if (p.includes('..')) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Path traversal (..) is not allowed. Provide a path under /home/user' },
+          ],
+          is_error: true,
+        };
+      }
+      if (!p.startsWith(HOME + '/')) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Only paths under /home/user are allowed' },
+          ],
+          is_error: true,
+        };
+      }
+      try {
+        let base64Data = content as string;
+        if (encoding === 'text') {
+          base64Data = Buffer.from(content, 'utf-8').toString('base64');
+        } else if (encoding !== 'base64') {
+          return {
+            type: MessageContentType.ToolResult,
+            tool_use_id: blockId,
+            content: [
+              { type: MessageContentType.Text, text: 'ERROR: encoding must be "text" or "base64"' },
+            ],
+            is_error: true,
+          };
+        }
+        // Ensure parent directory exists (best effort)
+        await ensureParentDir(p, logger);
+        const writeRes = await writeFile({ path: p, content: base64Data });
+        if (!writeRes.success) throw new Error(writeRes.message || 'Unknown error writing file');
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `File written to ${p}` },
+          ],
+        };
+      } catch (e: any) {
+        logger.error(`computer_write_file failed: ${e.message}`, e.stack);
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `ERROR: ${e.message}` },
+          ],
+          is_error: true,
+        };
+      }
+    }
+
+    if (blockName === 'computer_write_files') {
+      const { files } = b.input || {};
+      if (!Array.isArray(files) || files.length === 0) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: files must be a non-empty array' },
+          ],
+          is_error: true,
+        };
+      }
+      const HOME = '/home/user';
+      const results: string[] = [];
+      for (const f of files) {
+        try {
+          let p = String(f.path || '').trim();
+          if (!p) throw new Error('Missing path');
+          if (p.startsWith('~')) p = p.replace(/^~\/?/, HOME + '/');
+          if (!p.startsWith('/')) p = `${HOME}/${p}`;
+          p = p.replace(/\/+/, '/').replace(/\/+/, '/');
+          if (p.includes('..')) throw new Error('Path traversal (..) is not allowed');
+          if (!p.startsWith(HOME + '/')) throw new Error('Only paths under /home/user are allowed');
+          let base64Data = String(f.content ?? '');
+          if (f.encoding === 'text') {
+            base64Data = Buffer.from(base64Data, 'utf-8').toString('base64');
+          } else if (f.encoding !== 'base64') {
+            throw new Error('encoding must be "text" or "base64"');
+          }
+          // Ensure parent directory exists (best effort)
+          await ensureParentDir(p, logger);
+          const writeRes = await writeFile({ path: p, content: base64Data });
+          if (!writeRes.success) throw new Error(writeRes.message || 'Unknown error writing file');
+          results.push(`OK: ${p}`);
+        } catch (e: any) {
+          results.push(`ERROR: ${f?.path || '<unknown>'} - ${e.message}`);
+        }
+      }
+      return {
+        type: MessageContentType.ToolResult,
+        tool_use_id: blockId,
+        content: [
+          { type: MessageContentType.Text, text: results.join('\n') },
+        ],
+      };
+    }
+
+    if (blockName === 'computer_mkdir') {
+      const { path: rawPath, recursive } = b.input || {};
+      const HOME = '/home/user';
+      if (!rawPath || typeof rawPath !== 'string') {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Missing required input "path"' },
+          ],
+          is_error: true,
+        };
+      }
+      let p = rawPath.trim();
+      if (p.startsWith('~')) p = p.replace(/^~\/?/, HOME + '/');
+      if (!p.startsWith('/')) p = `${HOME}/${p}`;
+      p = p.replace(/\/+/, '/').replace(/\/+/, '/');
+      if (p.includes('..')) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Path traversal (..) is not allowed. Provide a path under /home/user' },
+          ],
+          is_error: true,
+        };
+      }
+      if (!p.startsWith(HOME + '/')) {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: 'ERROR: Only paths under /home/user are allowed' },
+          ],
+          is_error: true,
+        };
+      }
+
+      try {
+        const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'mkdir', path: p, recursive: recursive !== false }),
+        });
+        if (response.ok) {
+          return {
+            type: MessageContentType.ToolResult,
+            tool_use_id: blockId,
+            content: [
+              { type: MessageContentType.Text, text: `Directory created: ${p}` },
+            ],
+          };
+        }
+        // Fallback: use Terminal with a short mkdir command (robust against long-text failures)
+        logger.warn(`mkdir action not supported or failed (${response.status}). Falling back to Terminal mkdir -p.`);
+        await application({ application: 'terminal' });
+        await typeText({ text: `mkdir -p "${p}"` });
+        await pressKeys({ keys: ['enter'], press: 'down' });
+        await pressKeys({ keys: ['enter'], press: 'up' });
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `Directory created via Terminal: ${p}` },
+          ],
+        };
+      } catch (e: any) {
+        logger.error(`computer_mkdir failed: ${e.message}`, e.stack);
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `ERROR: ${e.message}` },
+          ],
+          is_error: true,
+        };
+      }
+    }
+
+    // OCR-backed click by visible text
+    if (blockName === 'computer_click_by_text') {
+      const { text, region, fuzz } = b.input || {};
+      if (!text || typeof text !== 'string') {
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            {
+              type: MessageContentType.Text,
+              text: 'ERROR: Missing required input "text"',
+            },
+          ],
+          is_error: true,
+        };
+      }
+
+      try {
+        const image = await screenshot();
+        const { createWorker } = await import('tesseract.js');
+        const worker = await createWorker(['eng']);
+        const { data } = await worker.recognize(
+          `data:image/png;base64,${image}`,
+        );
+        await worker.terminate();
+
+        const target = text.toLowerCase();
+        // Find best matching word block by simple contains; extend with fuzz if needed
+        const words = (data.words || []) as Array<{
+          text: string;
+          bbox: { x0: number; y0: number; x1: number; y1: number };
+        }>;
+
+        let best = null as null | { x: number; y: number; word: string };
+        for (const w of words) {
+          const wtext = (w.text || '').toLowerCase();
+          if (!wtext) continue;
+          if (wtext.includes(target)) {
+            const cx = Math.round((w.bbox.x0 + w.bbox.x1) / 2);
+            const cy = Math.round((w.bbox.y0 + w.bbox.y1) / 2);
+            best = { x: cx, y: cy, word: w.text };
+            break;
+          }
+        }
+
+        if (!best) {
+          return {
+            type: MessageContentType.ToolResult,
+            tool_use_id: blockId,
+            content: [
+              {
+                type: MessageContentType.Text,
+                text: `ERROR: Could not find text "${text}" on screen`,
+              },
+            ],
+            is_error: true,
+          };
+        }
+
+        await clickMouse({
+          coordinates: { x: best.x, y: best.y },
+          button: 'left',
+          clickCount: 1,
+          holdKeys: undefined,
+        });
+
+        // Take a verification screenshot
+        let verifyImg: string | null = null;
+        try {
+          await new Promise((r) => setTimeout(r, 600));
+          verifyImg = await screenshot();
+        } catch {}
+
+        const result: ToolResultContentBlock = {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            {
+              type: MessageContentType.Text,
+              text: `Clicked on text: ${best.word} at (${best.x}, ${best.y})`,
+            },
+          ],
+        };
+        if (verifyImg) {
+          result.content.push({
+            type: MessageContentType.Image,
+            source: {
+              data: verifyImg,
+              media_type: 'image/png',
+              type: 'base64',
+            },
+          });
+        }
+
+        return result;
+      } catch (e: any) {
+        logger.error(`computer_click_by_text failed: ${e.message}`, e.stack);
+        return {
+          type: MessageContentType.ToolResult,
+          tool_use_id: blockId,
+          content: [
+            { type: MessageContentType.Text, text: `ERROR: ${e.message}` },
+          ],
+          is_error: true,
+        };
+      }
+    }
     if (isMoveMouseToolUseBlock(block)) {
       await moveMouse(block.input);
     }

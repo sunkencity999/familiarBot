@@ -30,7 +30,7 @@ export function AssistantMessage({
         <div className="border-bytebot-bronze-light-a6 bg-bytebot-bronze-light-a1 w-full rounded-2xl border p-2">
           <div className="flex items-center gap-2">
             <Image
-              src="/indicators/indicator-pink.png"
+              src="/indicators/indicator-pink.svg"
               alt="User control status"
               width={15}
               height={15}

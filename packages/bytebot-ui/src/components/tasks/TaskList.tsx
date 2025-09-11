@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { TaskItem } from "@/components/tasks/TaskItem";
-import { fetchTasks } from "@/utils/taskUtils";
+import { fetchTasks, bulkDeleteTasks } from "@/utils/taskUtils";
 import { Task } from "@/types";
 import { useWebSocket } from "@/hooks/useWebSocket";
 
@@ -23,6 +23,8 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanMsg, setCleanMsg] = useState<string | null>(null);
 
   // WebSocket handlers for real-time updates
   const handleTaskUpdate = useCallback((updatedTask: Task) => {
@@ -67,12 +69,47 @@ export const TaskList: React.FC<TaskListProps> = ({
     loadTasks();
   }, [limit]);
 
+  const handleCleanPending = async () => {
+    setCleaning(true);
+    setCleanMsg(null);
+    try {
+      const res = await bulkDeleteTasks({ status: 'PENDING', olderThanMinutes: 5, unqueuedOnly: true });
+      if (res) {
+        setCleanMsg(`Deleted ${res.count} pending task(s).`);
+      } else {
+        setCleanMsg('Bulk delete failed.');
+      }
+    } catch (e) {
+      console.error(e);
+      setCleanMsg('Bulk delete encountered an error.');
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   return (
     <div className={className}>
       {showHeader && (
-        <div className="mb-6 flex flex-col gap-1">
-          <h2 className="text-base font-medium">{title}</h2>
-          <p className="text-sm text-bytebot-bronze-light-11">{description}</p>
+        <div className="mb-6 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-medium">{title}</h2>
+              <p className="text-sm text-bytebot-bronze-light-11">{description}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCleanPending}
+                disabled={cleaning}
+                className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${cleaning ? 'opacity-60 cursor-not-allowed' : 'hover:bg-bytebot-bronze-light-4'} border-bytebot-bronze-light-7`}
+                title="Delete pending tasks older than 5 minutes that are not queued"
+              >
+                {cleaning ? 'Cleaning…' : 'Clear Pending > 5min Old'}
+              </button>
+            </div>
+          </div>
+          {cleanMsg && (
+            <div className="text-xs text-bytebot-bronze-light-11">{cleanMsg}</div>
+          )}
         </div>
       )}
       

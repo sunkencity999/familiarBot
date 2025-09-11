@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { TasksService } from '../tasks/tasks.service';
 import { AgentProcessor } from './agent.processor';
@@ -19,14 +20,47 @@ export class AgentScheduler implements OnModuleInit {
     await this.handleCron();
   }
 
+  @OnEvent('task.created')
+  async onTaskCreated() {
+    const immediate = process.env.BYTEBOT_SCHEDULER_IMMEDIATE === 'true';
+    this.logger.log(
+      `[Scheduler] task.created event received (immediate=${immediate})`,
+    );
+    if (!immediate) return;
+
+    if (!this.agentProcessor.isRunning()) {
+      // Peek to see if there is any queued work before invoking handleCron
+      const queued = await this.tasksService.findNextTaskPreferQueued();
+      if (queued) {
+        await this.handleCron();
+      } else {
+        this.logger.log('[Scheduler] No queued tasks to start immediately');
+      }
+    } else {
+      this.logger.log('[Scheduler] Processor busy; will pick up on next tick');
+    }
+  }
+
   @Cron(CronExpression.EVERY_5_SECONDS)
   async handleCron() {
     const now = new Date();
+    const graceMs = 1500; // 1.5s grace to avoid millisecond boundary misses
+    const nowWithGrace = new Date(now.getTime() + graceMs);
+    this.logger.log(`[Scheduler] Tick at ${now.toISOString()}`);
     const scheduledTasks = await this.tasksService.findScheduledTasks();
+    this.logger.log(
+      `[Scheduler] Found ${scheduledTasks.length} scheduled tasks awaiting queueing`,
+    );
     for (const scheduledTask of scheduledTasks) {
-      if (scheduledTask.scheduledFor && scheduledTask.scheduledFor < now) {
-        this.logger.debug(
-          `Task ID: ${scheduledTask.id} is scheduled for ${scheduledTask.scheduledFor}, queuing it`,
+      const sf = scheduledTask.scheduledFor;
+      if (sf) {
+        this.logger.log(
+          `[Scheduler] Inspecting task ${scheduledTask.id} scheduledFor=${sf.toISOString()} now=${now.toISOString()}`,
+        );
+      }
+      if (scheduledTask.scheduledFor && scheduledTask.scheduledFor <= nowWithGrace) {
+        this.logger.log(
+          `Task ID: ${scheduledTask.id} is due; queuing it (scheduledFor=${scheduledTask.scheduledFor.toISOString()}, now=${nowWithGrace.toISOString()})`,
         );
         await this.tasksService.update(scheduledTask.id, {
           queuedAt: now,
@@ -35,10 +69,18 @@ export class AgentScheduler implements OnModuleInit {
     }
 
     if (this.agentProcessor.isRunning()) {
-      return;
+      // Defensive check: if processor claims running but DB has no RUNNING tasks, reset
+      const runningCheck = await this.tasksService.findAll(1, 1, ['RUNNING']);
+      if ((runningCheck?.total ?? 0) === 0) {
+        this.logger.warn('[Scheduler] AgentProcessor marked running but no RUNNING tasks found; resetting processor state');
+        await this.agentProcessor.stopProcessing();
+      } else {
+        this.logger.log('[Scheduler] AgentProcessor is currently running; will try again next tick');
+        return;
+      }
     }
     // Find the highest priority task to execute
-    const task = await this.tasksService.findNextTask();
+    const task = await this.tasksService.findNextTaskPreferQueued();
     if (task) {
       if (task.files.length > 0) {
         this.logger.debug(

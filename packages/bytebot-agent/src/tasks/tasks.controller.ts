@@ -43,7 +43,19 @@ export class TasksController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createTaskDto: CreateTaskDto): Promise<Task> {
-    return this.tasksService.create(createTaskDto);
+    try {
+      return await this.tasksService.create(createTaskDto);
+    } catch (error: any) {
+      console.error('Error creating task:', error?.message || error);
+      // Re-throw known HttpExceptions or BadRequest
+      if (error?.status) {
+        throw error;
+      }
+      throw new HttpException(
+        error?.message || 'Failed to create task',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get()
@@ -53,23 +65,45 @@ export class TasksController {
     @Query('status') status?: string,
     @Query('statuses') statuses?: string,
   ): Promise<{ tasks: Task[]; total: number; totalPages: number }> {
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const limitNum = limit ? parseInt(limit, 10) : 10;
+    try {
+      const pageNum = page ? parseInt(page, 10) : 1;
+      const limitNum = limit ? parseInt(limit, 10) : 10;
 
-    // Handle both single status and multiple statuses
-    let statusFilter: string[] | undefined;
-    if (statuses) {
-      statusFilter = statuses.split(',');
-    } else if (status) {
-      statusFilter = [status];
+      // Handle both single status and multiple statuses
+      let statusFilter: string[] | undefined;
+      if (statuses) {
+        statusFilter = statuses.split(',');
+      } else if (status) {
+        statusFilter = [status];
+      }
+
+      return await this.tasksService.findAll(pageNum, limitNum, statusFilter);
+    } catch (error: any) {
+      console.error('Error fetching tasks:', error?.message || error);
+      throw new HttpException(
+        error?.message || 'Failed to fetch tasks',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
+  }
 
-    return this.tasksService.findAll(pageNum, limitNum, statusFilter);
+  @Get('scheduled')
+  async findScheduled(): Promise<Task[]> {
+    try {
+      return await this.tasksService.findUpcomingScheduledTasks();
+    } catch (error: any) {
+      console.error('Error fetching scheduled tasks:', error?.message || error);
+      throw new HttpException(
+        error?.message || 'Failed to fetch scheduled tasks',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get('models')
   async getModels() {
-    const allModels: BytebotAgentModel[] = [...models];
+    // We'll accumulate in priority order: proxy -> vllm -> native
+    const collected: BytebotAgentModel[] = [];
 
     // Fetch models from proxy if available and filter by API keys
     if (proxyUrl) {
@@ -105,7 +139,7 @@ export class TasksController {
               title: model.model_name,
               contextWindow: model.model_info.max_input_tokens || 128000,
             }));
-          allModels.push(...proxyModels);
+          collected.push(...proxyModels);
         }
       } catch (error) {
         console.warn('Failed to fetch proxy models:', error.message);
@@ -140,7 +174,7 @@ export class TasksController {
               contextWindow: model.max_model_len || 32768,
             }),
           );
-          allModels.push(...vllmModels);
+          collected.push(...vllmModels);
         } else {
           // Fallback: try health endpoint to get model info
           const healthUrl = vllmBaseUrl.replace('/v1', '/health');
@@ -158,7 +192,7 @@ export class TasksController {
                 title: `VLLM: ${healthResponse.model}`,
                 contextWindow: 32768,
               };
-              allModels.push(vllmModel);
+              collected.push(vllmModel);
             }
           }
         }
@@ -167,7 +201,33 @@ export class TasksController {
       }
     }
 
-    return allModels;
+    // Finally, add native models (constants) last, so proxy/VLLM are preferred
+    const nativeModels: BytebotAgentModel[] = [...models];
+
+    // Normalize to a canonical short-name key for deduplication
+    const normalizeKey = (m: BytebotAgentModel): string => {
+      const raw = (m.name || m.title || '').toLowerCase().trim();
+      // strip known provider prefixes like 'openai/', 'anthropic/', 'gemini/', 'ollama/'
+      const short = raw.replace(/^(openai|anthropic|gemini|ollama)\//, '');
+      return short;
+    };
+
+    const deduped: Record<string, BytebotAgentModel> = {};
+    const order: string[] = [];
+
+    const addPreferred = (m: BytebotAgentModel) => {
+      const key = normalizeKey(m);
+      if (!deduped[key]) {
+        deduped[key] = m;
+        order.push(key);
+      }
+    };
+
+    // Prefer proxy first, then vllm (already in collected), then native
+    for (const m of collected) addPreferred(m);
+    for (const m of nativeModels) addPreferred(m);
+
+    return order.map((k) => deduped[k]);
   }
 
   @Get(':id')
@@ -233,6 +293,25 @@ export class TasksController {
     await this.tasksService.delete(id);
   }
 
+  // Bulk delete e.g., /tasks?status=PENDING&olderThanMinutes=30&unqueuedOnly=true
+  @Delete()
+  @HttpCode(HttpStatus.OK)
+  async bulkDelete(
+    @Query('status') status: string,
+    @Query('olderThanMinutes') olderThanMinutes?: string,
+    @Query('unqueuedOnly') unqueuedOnly?: string,
+  ): Promise<{ count: number; ids: string[] }> {
+    if (!status) {
+      throw new HttpException('status query is required', HttpStatus.BAD_REQUEST);
+    }
+    const minutes = olderThanMinutes ? parseInt(olderThanMinutes, 10) : undefined;
+    const unqueued = unqueuedOnly ? unqueuedOnly === 'true' : undefined;
+    return this.tasksService.deleteByStatus(status as any, {
+      olderThanMinutes: minutes,
+      unqueuedOnly: unqueued,
+    });
+  }
+
   @Post(':id/takeover')
   @HttpCode(HttpStatus.OK)
   async takeOver(@Param('id') taskId: string): Promise<Task> {
@@ -243,6 +322,12 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   async resume(@Param('id') taskId: string): Promise<Task> {
     return this.tasksService.resume(taskId);
+  }
+
+  @Post(':id/force-resume')
+  @HttpCode(HttpStatus.OK)
+  async forceResume(@Param('id') taskId: string): Promise<Task> {
+    return this.tasksService.forceResume(taskId);
   }
 
   @Post(':id/cancel')

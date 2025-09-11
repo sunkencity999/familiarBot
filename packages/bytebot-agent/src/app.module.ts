@@ -16,6 +16,7 @@ import { ProxyModule } from './proxy/proxy.module';
 import { VllmModule } from './vllm/vllm.module';
 import { FilesController } from './files/files.controller';
 import { ClipboardController } from './files/clipboard.controller';
+import { RecurringModule } from './recurring/recurring.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ClipboardController } from './files/clipboard.controller';
     GoogleModule,
     ProxyModule,
     VllmModule,
+    RecurringModule,
     PrismaModule,
   ],
   controllers: [AppController, FilesController, ClipboardController],

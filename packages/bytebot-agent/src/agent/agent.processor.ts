@@ -37,7 +37,7 @@ import {
   SUMMARIZATION_SYSTEM_PROMPT,
 } from './agent.constants';
 import { SummariesService } from '../summaries/summaries.service';
-import { handleComputerToolUse } from './agent.computer-use';
+import { handleComputerToolUse, setAgentInterlockActive, clearAgentInterlock, setAllowedTools, clearAllowedTools } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 import { VllmService } from '../vllm/vllm.service';
 
@@ -48,6 +48,9 @@ export class AgentProcessor {
   private isProcessing = false;
   private abortController: AbortController | null = null;
   private services: Record<string, BytebotAgentService> = {};
+  // Loop guards
+  private iterationCount: Record<string, number> = {};
+  private consecutiveScreenshotOnlyCount: Record<string, number> = {};
 
   constructor(
     private readonly tasksService: TasksService,
@@ -125,6 +128,10 @@ export class AgentProcessor {
     this.isProcessing = true;
     this.currentTaskId = taskId;
     this.abortController = new AbortController();
+    this.iterationCount[taskId] = 0;
+    this.consecutiveScreenshotOnlyCount[taskId] = 0;
+    // Activate safety interlock so tools only run during active processing
+    setAgentInterlockActive(taskId);
 
     // Kick off the first iteration without blocking the caller
     void this.runIteration(taskId);
@@ -146,12 +153,35 @@ export class AgentProcessor {
         this.logger.log(
           `Task processing completed for task ID: ${taskId} with status: ${task.status}`,
         );
+        await this.inputCaptureService.stop();
+        clearAgentInterlock();
+        clearAllowedTools();
         this.isProcessing = false;
         this.currentTaskId = null;
         return;
       }
 
-      this.logger.log(`Processing iteration for task ID: ${taskId}`);
+      // Increment iteration counter and check caps
+      const iter = (this.iterationCount[taskId] ?? 0) + 1;
+      this.iterationCount[taskId] = iter;
+
+      this.logger.log(`Processing iteration #${iter} for task ID: ${taskId}`);
+
+      const MAX_ITERATIONS = 40; // safety guard
+      if (iter > MAX_ITERATIONS) {
+        this.logger.warn(
+          `Max iterations (${MAX_ITERATIONS}) exceeded for task ${taskId}. Marking as NEEDS_HELP`,
+        );
+        await this.tasksService.update(taskId, {
+          status: TaskStatus.NEEDS_HELP,
+        });
+        await this.inputCaptureService.stop();
+        clearAgentInterlock();
+        clearAllowedTools();
+        this.isProcessing = false;
+        this.currentTaskId = null;
+        return;
+      }
 
       // Refresh abort controller for this iteration to avoid accumulating
       // "abort" listeners on a single AbortSignal across iterations.
@@ -187,6 +217,22 @@ export class AgentProcessor {
       );
 
       const model = task.model as unknown as BytebotAgentModel;
+      // Apply tools-only allowlist if requested by task description
+      const toolsOnly = /tools only/i.test(task.description || '');
+      if (toolsOnly) {
+        setAllowedTools([
+          'computer_mkdir',
+          'computer_write_file',
+          'computer_write_files',
+          'computer_application',
+          'computer_screenshot',
+          'set_task_status',
+          'computer_read_file',
+        ]);
+        this.logger.log(`Tools-only mode enabled for task ${taskId}`);
+      } else {
+        clearAllowedTools();
+      }
       let agentResponse: BytebotAgentResponse;
 
       const service = this.services[model.provider];
@@ -197,6 +243,9 @@ export class AgentProcessor {
         await this.tasksService.update(taskId, {
           status: TaskStatus.FAILED,
         });
+        await this.inputCaptureService.stop();
+        clearAgentInterlock();
+        clearAllowedTools();
         this.isProcessing = false;
         this.currentTaskId = null;
         return;
@@ -311,10 +360,17 @@ export class AgentProcessor {
 
       let setTaskStatusToolUseBlock: SetTaskStatusToolUseBlock | null = null;
 
+      let sawNonScreenshotToolUse = false;
+      let sawAnyToolUse = false;
+
       for (const block of messageContentBlocks) {
         if (isComputerToolUseContentBlock(block)) {
           const result = await handleComputerToolUse(block, this.logger);
           generatedToolResults.push(result);
+          sawAnyToolUse = true;
+          if (block.name !== 'computer_screenshot') {
+            sawNonScreenshotToolUse = true;
+          }
         }
 
         if (isCreateTaskToolUseBlock(block)) {
@@ -369,6 +425,27 @@ export class AgentProcessor {
         });
       }
 
+      // Update repeated-screenshot-only guard
+      if (sawAnyToolUse && !sawNonScreenshotToolUse) {
+        this.consecutiveScreenshotOnlyCount[taskId] =
+          (this.consecutiveScreenshotOnlyCount[taskId] ?? 0) + 1;
+      } else if (sawNonScreenshotToolUse) {
+        this.consecutiveScreenshotOnlyCount[taskId] = 0;
+      }
+
+      const MAX_SCREENSHOT_ONLY_BURST = 3;
+      if ((this.consecutiveScreenshotOnlyCount[taskId] ?? 0) >= MAX_SCREENSHOT_ONLY_BURST) {
+        this.logger.warn(
+          `Detected ${this.consecutiveScreenshotOnlyCount[taskId]} consecutive screenshot-only tool requests for task ${taskId}. Marking as NEEDS_HELP to avoid observation loop.`,
+        );
+        await this.tasksService.update(taskId, {
+          status: TaskStatus.NEEDS_HELP,
+        });
+        this.isProcessing = false;
+        this.currentTaskId = null;
+        return;
+      }
+
       // Update the task status after all tool results have been generated if we have a set task status tool use block
       if (setTaskStatusToolUseBlock) {
         switch (setTaskStatusToolUseBlock.input.status) {
@@ -399,6 +476,9 @@ export class AgentProcessor {
           status: TaskStatus.COMPLETED,
           completedAt: new Date(),
         });
+        await this.inputCaptureService.stop();
+        clearAgentInterlock();
+        clearAllowedTools();
         this.isProcessing = false;
         this.currentTaskId = null;
       }
@@ -413,6 +493,9 @@ export class AgentProcessor {
         await this.tasksService.update(taskId, {
           status: TaskStatus.FAILED,
         });
+        await this.inputCaptureService.stop();
+        clearAgentInterlock();
+        clearAllowedTools();
         this.isProcessing = false;
         this.currentTaskId = null;
       }

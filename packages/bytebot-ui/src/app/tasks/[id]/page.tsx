@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { forceResumeTask } from "@/utils/taskUtils";
 import { VirtualDesktopStatus } from "@/components/VirtualDesktopStatusHeader";
 
 export default function TaskPage() {
@@ -158,6 +159,20 @@ export default function TaskPage() {
                   }
                 >
                   Take Over
+                </Button>
+              )}
+              {taskStatus === TaskStatus.PENDING && (
+                <Button
+                  onClick={async () => {
+                    // Fire and forget; backend emits updates via WebSocket
+                    await forceResumeTask(taskId);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="ml-2"
+                  title="Force the agent to resume this task immediately"
+                >
+                  Force Resume
                 </Button>
               )}
               {hasUserControl() && (

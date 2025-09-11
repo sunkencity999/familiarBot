@@ -30,17 +30,23 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_DB=bytebotdb
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bytebotdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - bytebot-network
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data
 
   bytebot-agent:
     build:
       context: ../packages/
       dockerfile: bytebot-agent/Dockerfile
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-agent:edge
+    # Image can be overridden via env; default to the image with local API active
+    image: ${AGENT_IMAGE:-familiarbot-agent-fixed:fixed-latest}
     container_name: bytebot-agent
     restart: unless-stopped
     ports:
@@ -51,8 +57,15 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Local model endpoints (optional, but ensure they pass through when defined)
+      - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
+      - VLLM_BASE_URL=${VLLM_BASE_URL}
+      - VLLM_API_KEY=${VLLM_API_KEY}
+      - LOCAL_OPENAI_BASE=${LOCAL_OPENAI_BASE}
+      - LOCAL_OPENAI_API_KEY=${LOCAL_OPENAI_API_KEY}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - bytebot-network
 
@@ -63,8 +76,9 @@ services:
       args:
         - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
         - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
-    # Use custom fixed image
-    image: familiarbot-ui-fixed:latest
+        - NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL=${NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL:-http://localhost:9991}
+    # Image can be overridden via env; default to the image with local API active
+    image: ${UI_IMAGE:-familiarbot-ui-fixed:fixed-latest}
     container_name: bytebot-ui
     restart: unless-stopped
     ports:
@@ -73,6 +87,7 @@ services:
       - NODE_ENV=production
       - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
       - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
+      - NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL=${NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL:-http://localhost:9991}
     depends_on:
       - bytebot-agent
     networks:
@@ -82,5 +97,3 @@ networks:
   bytebot-network:
     driver: bridge
 
-volumes:
-  postgres_data:

@@ -39,6 +39,7 @@ export class CreateTaskDto {
 
   @IsOptional()
   @IsDate()
+  @Type(() => Date)
   scheduledFor?: Date;
 
   @IsOptional()
