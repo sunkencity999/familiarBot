@@ -198,9 +198,15 @@ export class OpenAIService implements BytebotAgentService {
                 }
 
                 if (content.type === MessageContentType.Image) {
-                  // Only include a single user message with the image. Avoid also
-                  // emitting a generic 'screenshot' function_call_output which
-                  // can bias the model toward repeated observation.
+                  // The OpenAI Responses API requires a function_call_output for each prior
+                  // function_call. For screenshot/image tool results, emit a minimal
+                  // function_call_output first, then include the image as a separate user message.
+                  openaiMessages.push({
+                    type: 'function_call_output',
+                    call_id: toolResult.tool_use_id,
+                    output: 'Image captured and attached.',
+                  } as OpenAI.Responses.ResponseInputItem.FunctionCallOutput);
+
                   openaiMessages.push({
                     role: 'user',
                     type: 'message',
