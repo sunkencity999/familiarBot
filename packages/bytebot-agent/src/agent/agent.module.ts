@@ -12,6 +12,7 @@ import { SummariesModule } from 'src/summaries/summaries.modue';
 import { AgentAnalyticsService } from './agent.analytics';
 import { ProxyModule } from 'src/proxy/proxy.module';
 import { VllmModule } from 'src/vllm/vllm.module';
+import { CalendarModule } from '../calendar/calendar.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { VllmModule } from 'src/vllm/vllm.module';
     GoogleModule,
     ProxyModule,
     VllmModule,
+    CalendarModule,
   ],
   providers: [
     AgentProcessor,

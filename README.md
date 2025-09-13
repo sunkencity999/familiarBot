@@ -322,6 +322,88 @@ Once running, open the UI and pick a model under provider `proxy` (e.g., `local-
 
 
 
+## Google Calendar Integration (OAuth)
+
+Jobybot can create and read Google Calendar events via a built-in OAuth flow in the agent service.
+
+### What this adds
+
+- `calendar_create_event` and `calendar_list_events` capabilities routed through the agent
+- A secure OAuth2 authorization flow with token persistence on disk
+
+### Prerequisites
+
+- A Google Cloud project with OAuth 2.0 Client ID of type "Web"
+- This repo running via Docker Compose
+
+### Environment variables (in `docker/.env`)
+
+Set these (values are examples; use your own):
+
+```ini
+GOOGLE_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=YOUR_CLIENT_SECRET
+GOOGLE_OAUTH_REDIRECT=http://localhost:9991/api/google/oauth/callback
+# Optional overrides (defaults shown)
+GOOGLE_SCOPES=https://www.googleapis.com/auth/calendar
+GOOGLE_TOKEN_PATH=/data/google_tokens.json
+```
+
+Notes:
+
+- The agent sets a global API prefix `api` in `packages/bytebot-agent/src/main.ts`, so the redirect must include `/api`.
+- Tokens are stored at `/data/google_tokens.json` inside the agent container. This repository mounts `./data:/data` under `bytebot-agent` in `docker/docker-compose.yml` so tokens persist on the host at `docker/data/google_tokens.json`.
+
+### Configure the OAuth client in Google Cloud
+
+1. In Google Cloud Console, go to: APIs & Services → Credentials → OAuth 2.0 Client IDs → your Web client
+2. Add this Authorized redirect URI exactly:
+   - `http://localhost:9991/api/google/oauth/callback`
+3. If the app is in Testing, either add your Google account under Test users or Publish the app (not required for local dev).
+
+### Start the stack
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
+```
+
+### Run the OAuth flow
+
+- Start: `http://localhost:9991/api/google/oauth/start`
+- After consent, you should see a success page. Verify:
+  - Status: `http://localhost:9991/api/google/oauth/status` → `{ "authorized": true }`
+
+### Usage examples
+
+- Natural language tasks via the agent (UI or API):
+  - "Create a calendar event tomorrow 10–11 AM titled 'Project Sync' with alice@example.com; remind me 30 minutes before."
+  - "List my meetings for the next 2 days."
+
+- Example API call to create a task (UI does the same under the hood):
+
+```bash
+curl -s -X POST http://localhost:9991/api/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "type": "IMMEDIATE",
+        "input": "Create a calendar event tomorrow 10–11 AM titled \'Project Sync\' with alice@example.com; remind me 30 minutes before."
+      }'
+```
+
+### Endpoints (served by `packages/bytebot-agent/src/calendar/calendar.controller.ts`)
+
+- `GET /api/google/oauth/start` → redirects to Google consent
+- `GET /api/google/oauth/callback?code=...` → exchanges code and stores tokens
+- `GET /api/google/oauth/status` → `{ authorized: boolean }`
+
+### Troubleshooting
+
+- 404 at `http://localhost:9991/` is expected. Routes are under `/api`.
+- "Google hasn’t verified this app": in Testing mode, click Advanced → Continue, or add yourself as a Test user.
+- Redirect mismatch: ensure the OAuth client redirect URI is exactly `http://localhost:9991/api/google/oauth/callback`, and that `GOOGLE_OAUTH_REDIRECT` matches.
+- Token persistence: ensure `bytebot-agent` has `volumes: - ./data:/data` in `docker/docker-compose.yml` and that `docker/data/google_tokens.json` exists after successful consent.
+
+
 ## Community & Support
 
 - **Discord**: [Join our community](https://discord.com/invite/d9ewZkWPTP) for help and discussions

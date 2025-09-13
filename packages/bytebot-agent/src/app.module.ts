@@ -14,6 +14,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SummariesModule } from './summaries/summaries.modue';
 import { ProxyModule } from './proxy/proxy.module';
 import { VllmModule } from './vllm/vllm.module';
+import { CalendarModule } from './calendar/calendar.module';
 import { FilesController } from './files/files.controller';
 import { ClipboardController } from './files/clipboard.controller';
 import { RecurringModule } from './recurring/recurring.module';
@@ -34,6 +35,7 @@ import { RecurringModule } from './recurring/recurring.module';
     GoogleModule,
     ProxyModule,
     VllmModule,
+    CalendarModule,
     RecurringModule,
     PrismaModule,
   ],

@@ -40,6 +40,7 @@ import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse, setAgentInterlockActive, clearAgentInterlock, setAllowedTools, clearAllowedTools } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 import { VllmService } from '../vllm/vllm.service';
+import { CalendarService } from '../calendar/calendar.service';
 
 @Injectable()
 export class AgentProcessor {
@@ -62,6 +63,7 @@ export class AgentProcessor {
     private readonly proxyService: ProxyService,
     private readonly vllmService: VllmService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly calendarService: CalendarService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -364,6 +366,104 @@ export class AgentProcessor {
       let sawAnyToolUse = false;
 
       for (const block of messageContentBlocks) {
+        // Handle Google Calendar tools
+        if (block.type === MessageContentType.ToolUse) {
+          const name = (block as any).name as string;
+          if (name === 'calendar_list_events') {
+            try {
+              const params = (block as any).input || {};
+              const events = await this.calendarService.listEvents({
+                timeMin: params.timeMin,
+                timeMax: params.timeMax,
+                maxResults: params.maxResults,
+                q: params.q,
+                calendarId: params.calendarId,
+              });
+
+              generatedToolResults.push({
+                type: MessageContentType.ToolResult,
+                tool_use_id: (block as any).id,
+                content: [
+                  {
+                    type: MessageContentType.Text,
+                    text: JSON.stringify(
+                      events.map((e) => ({
+                        id: e.id,
+                        summary: e.summary,
+                        start: e.start,
+                        end: e.end,
+                        hangoutLink: (e as any).hangoutLink,
+                        htmlLink: e.htmlLink,
+                        location: e.location,
+                      })),
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+              });
+              sawAnyToolUse = true;
+              continue;
+            } catch (err: any) {
+              generatedToolResults.push({
+                type: MessageContentType.ToolResult,
+                tool_use_id: (block as any).id,
+                is_error: true,
+                content: [
+                  {
+                    type: MessageContentType.Text,
+                    text: `ERROR: Failed to list events - ${err.message}`,
+                  },
+                ],
+              });
+              sawAnyToolUse = true;
+              continue;
+            }
+          }
+
+          if (name === 'calendar_create_event') {
+            try {
+              const input = (block as any).input || {};
+              const event = await this.calendarService.createEvent(input);
+              generatedToolResults.push({
+                type: MessageContentType.ToolResult,
+                tool_use_id: (block as any).id,
+                content: [
+                  {
+                    type: MessageContentType.Text,
+                    text: JSON.stringify(
+                      {
+                        id: event.id,
+                        summary: event.summary,
+                        htmlLink: event.htmlLink,
+                        start: event.start,
+                        end: event.end,
+                      },
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+              });
+              sawAnyToolUse = true;
+              continue;
+            } catch (err: any) {
+              generatedToolResults.push({
+                type: MessageContentType.ToolResult,
+                tool_use_id: (block as any).id,
+                is_error: true,
+                content: [
+                  {
+                    type: MessageContentType.Text,
+                    text: `ERROR: Failed to create event - ${err.message}`,
+                  },
+                ],
+              });
+              sawAnyToolUse = true;
+              continue;
+            }
+          }
+        }
         if (isComputerToolUseContentBlock(block)) {
           const result = await handleComputerToolUse(block, this.logger);
           generatedToolResults.push(result);

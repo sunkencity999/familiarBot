@@ -19,6 +19,8 @@ services:
       - DISPLAY=:0
     networks:
       - bytebot-network
+    volumes:
+      - ./data:/data
 
   postgres:
     image: postgres:16-alpine
@@ -63,11 +65,19 @@ services:
       - VLLM_API_KEY=${VLLM_API_KEY}
       - LOCAL_OPENAI_BASE=${LOCAL_OPENAI_BASE}
       - LOCAL_OPENAI_API_KEY=${LOCAL_OPENAI_API_KEY}
+      # Google OAuth / Calendar
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_OAUTH_REDIRECT=${GOOGLE_OAUTH_REDIRECT:-http://localhost:9991/api/google/oauth/callback}
+      - GOOGLE_SCOPES=${GOOGLE_SCOPES:-https://www.googleapis.com/auth/calendar}
+      - GOOGLE_TOKEN_PATH=${GOOGLE_TOKEN_PATH:-/data/google_tokens.json}
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - bytebot-network
+    volumes:
+      - ./data:/data
 
   bytebot-ui:
     build:

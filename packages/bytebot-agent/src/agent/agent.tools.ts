@@ -554,4 +554,103 @@ export const agentTools = [
   _writeFileTool,
   _writeFilesTool,
   _mkdirTool,
+  // Calendar tools
+  {
+    name: 'calendar_list_events',
+    description:
+      'List calendar events from Google Calendar. Specify a time range and optional search query.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        timeMin: {
+          type: 'string' as const,
+          nullable: true,
+          description: 'RFC 3339 start datetime (e.g., 2025-09-11T00:00:00-07:00)',
+        },
+        timeMax: {
+          type: 'string' as const,
+          nullable: true,
+          description: 'RFC 3339 end datetime',
+        },
+        maxResults: {
+          type: 'integer' as const,
+          nullable: true,
+          description: 'Maximum number of events to return (default 50)',
+        },
+        q: {
+          type: 'string' as const,
+          nullable: true,
+          description: 'Free-text search query (summary/description/location)',
+        },
+        calendarId: {
+          type: 'string' as const,
+          nullable: true,
+          description: 'Calendar ID (defaults to primary)',
+        },
+      },
+    },
+  },
+  {
+    name: 'calendar_create_event',
+    description:
+      'Create a new event in Google Calendar with start/end, attendees, and reminders.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        summary: { type: 'string' as const, description: 'Event title' },
+        description: { type: 'string' as const, nullable: true },
+        location: { type: 'string' as const, nullable: true },
+        start: {
+          type: 'object' as const,
+          properties: {
+            dateTime: { type: 'string' as const, nullable: true },
+            date: { type: 'string' as const, nullable: true },
+            timeZone: { type: 'string' as const, nullable: true },
+          },
+          required: [],
+        },
+        end: {
+          type: 'object' as const,
+          properties: {
+            dateTime: { type: 'string' as const, nullable: true },
+            date: { type: 'string' as const, nullable: true },
+            timeZone: { type: 'string' as const, nullable: true },
+          },
+          required: [],
+        },
+        attendees: {
+          type: 'array' as const,
+          nullable: true,
+          items: {
+            type: 'object' as const,
+            properties: { email: { type: 'string' as const } },
+            required: ['email'],
+          },
+        },
+        reminders: {
+          type: 'object' as const,
+          nullable: true,
+          properties: {
+            useDefault: { type: 'boolean' as const, nullable: true },
+            overrides: {
+              type: 'array' as const,
+              items: {
+                type: 'object' as const,
+                properties: {
+                  method: {
+                    type: 'string' as const,
+                    enum: ['email', 'popup'],
+                  },
+                  minutes: { type: 'integer' as const },
+                },
+                required: ['method', 'minutes'],
+              },
+            },
+          },
+        },
+        calendarId: { type: 'string' as const, nullable: true },
+      },
+      required: ['summary', 'start', 'end'],
+    },
+  },
 ];
