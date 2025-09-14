@@ -200,3 +200,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 docker/pgdata/
 pgdata/
+docker/data/
+docker/data/*
