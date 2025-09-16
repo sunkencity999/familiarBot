@@ -35,8 +35,9 @@ export default function FilesPage() {
     setError(null);
     setNotice(null);
     try {
-      console.log('Fetching directory:', path || 'root');
-      const res = await listDir(path);
+      const target = typeof path === 'string' ? path : (cwd || "");
+      console.log('Fetching directory:', target || 'root');
+      const res = await listDir(target);
       console.log('API response:', res);
       setCwd(res.path);
       if (!basePath) setBasePath(res.path); // capture base on first load
@@ -52,7 +53,7 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [basePath]);
+  }, [basePath, cwd]);
 
   useEffect(() => { 
     console.log('Initial load effect triggered');
@@ -80,10 +81,10 @@ export default function FilesPage() {
     const files = Array.from(e.dataTransfer.files);
     try {
       for (const f of files) {
-        const target = `${cwd}/${f.name}`;
-        await uploadFile(target, f);
+        const targetPath = `${cwd}/${f.name}`;
+        await uploadFile(targetPath, f);
       }
-      await refresh();
+      await refresh(cwd);
     } catch (e: unknown) {
       console.error('Upload error', e);
       setError(getErrorMessage(e) || 'Upload failed');
@@ -119,7 +120,7 @@ export default function FilesPage() {
     try {
       await mkdir(`${cwd}/${newFolder.trim()}`);
       setNewFolder("");
-      await refresh();
+      await refresh(cwd);
     } catch (e: unknown) {
       console.error('Mkdir error', e);
       setError(getErrorMessage(e) || 'Failed to create folder');
@@ -129,7 +130,9 @@ export default function FilesPage() {
   const handleDelete = async (name: string) => {
     try {
       await deletePath(`${cwd}/${name}`);
-      await refresh();
+      // Optimistically update UI
+      setEntries(prev => prev.filter(e => e.name !== name));
+      await refresh(cwd);
     } catch (e: unknown) {
       console.error('Delete error', e);
       setError(getErrorMessage(e) || 'Delete failed');
